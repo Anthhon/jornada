@@ -10,7 +10,7 @@ from .serializers import ProfileSerializer, GroupSerializer, UserSerializer
 @api_view(['GET'])
 def user_list(request):
     # Get all users
-    users = User.objects.all().filter('-created_at')
+    users = User.objects.all().order_by('-date_joined')
     # Serialize all 'users' info
     users_serialized = UserSerializer(users, many=True)
     # Return all serialized info

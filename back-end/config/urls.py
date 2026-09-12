@@ -6,5 +6,5 @@ urlpatterns = [
         path('admin/', admin.site.urls),
 
         # Users related views
-        path('', include('users.urls')),
+        path('', include('apps.users.urls')),
         ]
