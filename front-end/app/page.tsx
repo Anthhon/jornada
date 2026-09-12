@@ -17,19 +17,21 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-100 flex flex-col items-center pt-16 px-4">
-      <h1 className="text-3xl font-bold mb-6 text-gray-800">Users</h1>
+      <h1 className="text-3xl font-bold text-gray-800">Usuários</h1>
+      <p className="text-sm text-gray-800 mb-6">Lista de todos os usuários cadastrados</p>
 
       {loading ? (
-        <p className="text-gray-500">Loading...</p>
+        <p className="text-gray-500">Carregando...</p>
       ) : (
         <ul className="w-full max-w-md space-y-2">
           {users.map((u) => (
             <li
               key={u.id}
-              className="bg-white shadow rounded px-4 py-2 flex flex-col"
+              className="bg-white shadow rounded px-4 py-2 flex flex-row gap-2 items-center justify-between"
             >
-              <span className="font-semibold">{u.username}</span>
-              <span className="text-sm text-gray-500">{u.email}</span>
+              <span className="text-center text-sm text-gray-500">{u.id}</span>
+              <span className="text-center font-semibold text-gray-800">{u.username}</span>
+              <span className="text-center text-sm text-gray-500">{u.date_joined}</span>
             </li>
           ))}
         </ul>
