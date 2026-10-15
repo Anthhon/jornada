@@ -1,15 +1,34 @@
 from django.db import models
 
-# Defines the Group and Student models and their relationship
 class Group(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(
+            max_length=100,
+            unique=True,
+            verbose_name="Nome",
+            )
+    points = models.IntegerField(
+            default=0,
+            verbose_name="Qtd. de pontos",
+            )
+    created_at = models.DateTimeField(
+            auto_now_add=True,
+            blank=True,
+            null=True,
+            )
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Grupo"
+        verbose_name_plural = "Grupos"
 
     def __str__(self):
         return self.name
 
-class Student(models.Model):
-    name = models.CharField(max_length=100)
-    group = models.ForeignKey(Group,related_name='students',on_delete=models.CASCADE)
+    @property
+    def member_count(self):
+        return self.students.count()
 
-    def __str__(self):
-        return self.name
+    # Add points to respective group
+    def add_points(self, amount):
+        self.points += int(amount)
+        self.save(update_fields=["points"])

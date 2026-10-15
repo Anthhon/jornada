@@ -46,7 +46,11 @@ INSTALLED_APPS = [
 
         # Local apps
         'apps.users',
-        'apps.groups'
+        'apps.groups',
+        'apps.spells',
+        'apps.heroes',
+        'apps.bosses',
+        'apps.journeys',
         ]
 
 MIDDLEWARE = [
