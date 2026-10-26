@@ -1,3 +1,11 @@
-from django.shortcuts import render
+from rest_framework import viewsets
 
-# Create your views here.
+from .models import Spell
+from .serializers import SpellSerializer
+
+
+class SpellViewSet(viewsets.ModelViewSet):
+    """CRUD de feitiços (compartilhados por heróis e chefes)."""
+
+    queryset = Spell.objects.all()
+    serializer_class = SpellSerializer

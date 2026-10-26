@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
 
@@ -91,7 +92,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            # DB_NAME aponta para outro arquivo de banco (usado pelos gates em
+            # tools/ para validar `migrate` num SQLite temporário, sem tocar no
+            # db.sqlite3 de desenvolvimento).
+            'NAME': BASE_DIR / os.environ.get('DB_NAME', 'db.sqlite3'),
             }
         }
 
@@ -143,6 +147,12 @@ CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    # Padrão provisório (PLANO.md §7.1 — ADR de papéis pendente): leitura
+    # aberta, escrita só do professor (is_staff). Ver
+    # apps/users/permissions.py — documentado no RELATORIO_MODIFICACOES.md.
+    'DEFAULT_PERMISSION_CLASSES': (
+        'apps.users.permissions.ReadOnlyOrStaff',
     ),
 }
 
