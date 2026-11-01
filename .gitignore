@@ -1,3 +1,16 @@
+# Conteúdo de referência da disciplina e exercícios com dados/materiais de
+# terceiros — não versionar (regra dura §4.5 do PLANO.md)
+Documentos/
+Personas/
+
+# Documentação de trabalho — fica SÓ local, nunca vai pro servidor remoto
+# (decisão de 26/10: versionamos apenas código + gates em tools/).
+# Continuamos trabalhando normalmente com esses arquivos; eles simplesmente
+# não são enviados ao remoto.
+docs/
+*.md
+!tools/*.md
+
 # Logs
 logs
 *.log
@@ -164,7 +177,6 @@ lib64/
 parts/
 sdist/
 var/
-migrations/
 wheels/
 *.egg-info/
 .installed.cfg

@@ -1,0 +1,8 @@
+# Dependências do backend — Jornada (Django 5.2 LTS)
+# Validado com Python 3.14.7 (2026-10-26) — gate: tools/validar_fundacao.sh
+# Dependências transitivas (PyJWT, asgiref, sqlparse, django-filter etc.) são
+# resolvidas pelo pip a partir destas; nada impede piná-las depois se quiser.
+Django==5.2.18
+djangorestframework==3.18.3
+djangorestframework_simplejwt==5.5.1
+django-cors-headers==4.9.0
