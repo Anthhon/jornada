@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import F
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -33,6 +34,7 @@ class GroupViewSet(viewsets.ModelViewSet):
             qs = qs.filter(is_active=active.lower() in ("1", "true", "yes"))
         return qs
 
+    @extend_schema(request=SetMembersSerializer, responses=GroupSerializer)
     @action(detail=True, methods=["post"], url_path="set-members")
     def set_members(self, request, pk=None):
         """Define de uma vez quem são os N alunos do grupo.
@@ -56,6 +58,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         group.refresh_from_db()
         return Response(self.get_serializer(group).data)
 
+    @extend_schema(request=ExtraPointsSerializer, responses=GroupSerializer)
     @action(detail=True, methods=["post"], url_path="add-extra-points")
     def add_extra_points(self, request, pk=None):
         """Soma pontos extras ao grupo. Corpo: ``{"amount": 5}``."""

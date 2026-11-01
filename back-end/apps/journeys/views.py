@@ -1,4 +1,6 @@
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied, ValidationError
@@ -68,6 +70,7 @@ class GroupJourneyViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(**{lookup: params[field]})
         return qs
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["get"])
     def summary(self, request, pk=None):
         """Nota/pontuação final da jornada e desempenho por aluno."""
@@ -142,6 +145,7 @@ class BattleViewSet(viewsets.ViewSet):
         except battle.BattleError as exc:
             raise ValidationError({"detail": str(exc)})
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
     def retrieve(self, request, pk=None):
         progress = get_object_or_404(
             StageProgress.objects.select_related(
@@ -151,6 +155,7 @@ class BattleViewSet(viewsets.ViewSet):
         )
         return Response(battle_state(progress))
 
+    @extend_schema(request=StartBattleSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=["post"])
     def start(self, request):
         data = StartBattleSerializer(data=request.data)
@@ -171,6 +176,7 @@ class BattleViewSet(viewsets.ViewSet):
         ).get(pk=progress.pk)
         return Response(battle_state(progress), status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=AnswerSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=True, methods=["post"])
     def answer(self, request, pk=None):
         progress = get_object_or_404(

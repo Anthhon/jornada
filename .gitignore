@@ -10,6 +10,7 @@ Personas/
 docs/
 *.md
 !tools/*.md
+!back-end/API.md
 
 # Logs
 logs

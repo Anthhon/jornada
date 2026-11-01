@@ -4,6 +4,8 @@ import unicodedata
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils.text import slugify
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -38,6 +40,7 @@ def _new_username(name):
     return username
 
 
+@extend_schema(responses=OpenApiTypes.OBJECT)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def me(request):
@@ -88,6 +91,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(is_active=params['active'].lower() in ('1', 'true', 'yes'))
         return qs
 
+    @extend_schema(request=StudentBulkSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['post'], url_path='bulk')
     def bulk(self, request):
         """Cria vários alunos de uma vez, cada um com login e senha gerados.

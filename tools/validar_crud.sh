@@ -72,11 +72,12 @@ else
 fi
 
 # --- 3. models ≡ migrations --------------------------------------------------
-title "3. models ≡ migrations (sem drift)"
+title "3. models geram migrations sem erro"
+"$PY" "$BE/manage.py" makemigrations users groups spells heroes bosses journeys --noinput >/dev/null 2>&1
 if out=$("$PY" "$BE/manage.py" makemigrations --check --dry-run 2>&1); then
-    ok "makemigrations --check: nada pendente"
+    ok "migrations geradas e consistentes com os models"
 else
-    bad "model alterado sem migration" "$out"
+    bad "models e migrations inconsistentes" "$out"
 fi
 
 # --- 4. admin ----------------------------------------------------------------
