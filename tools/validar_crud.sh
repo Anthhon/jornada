@@ -24,7 +24,7 @@ PY="$BE/.venv/bin/python"
 TMP_DB="crud_gate.sqlite3"
 PORT=8791
 BASE="http://127.0.0.1:$PORT"
-SRV_LOG="$(mktemp /tmp/opencode/gate_srv.XXXXXX)"
+SRV_LOG="$(mktemp "${TMPDIR:-/tmp}/gate_srv.XXXXXX")"
 SERVER_PID=""
 
 pass=0
