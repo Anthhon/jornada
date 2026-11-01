@@ -132,3 +132,26 @@ class QuestionModelTests(TestCase):
         boss = Boss.objects.create(name="C")
         q = Question.objects.create(boss=boss, text="x" * 100)
         self.assertEqual(len(str(q)), 60)
+
+
+class AnswerKeyHiddenTests(TestCase):
+    """Gabarito (is_correct) só aparece para professor."""
+
+    def setUp(self):
+        boss = Boss.objects.create(name="Chefe Gabarito")
+        self.pergunta = Question.objects.create(boss=boss, text="2+2?")
+        self.certa = Choice.objects.create(question=self.pergunta, text="4", is_correct=True)
+        Choice.objects.create(question=self.pergunta, text="5", is_correct=False)
+
+    def test_visitante_e_aluno_nao_veem_is_correct(self):
+        for client in (anon_client(), user_client()):
+            lista = client.get("/api/choices/")
+            self.assertTrue(all("is_correct" not in c for c in lista.data))
+            nested = client.get(f"/api/questions/{self.pergunta.id}/")
+            self.assertTrue(all("is_correct" not in c for c in nested.data["choices"]))
+
+    def test_professor_ve_is_correct(self):
+        resp = staff_client().get(f"/api/choices/{self.certa.id}/")
+        self.assertTrue(resp.data["is_correct"])
+        nested = staff_client().get(f"/api/questions/{self.pergunta.id}/")
+        self.assertEqual(sorted(c["is_correct"] for c in nested.data["choices"]), [False, True])

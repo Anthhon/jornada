@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.spells.models import Spell
+from apps.users.permissions import is_teacher
 
 from .models import Boss, BossSpell, Choice, Question
 
@@ -57,9 +58,19 @@ class BossSpellSerializer(serializers.ModelSerializer):
 
 
 class ChoiceSerializer(serializers.ModelSerializer):
+    """Alternativa. O gabarito (``is_correct``) só sai para professor: a leitura
+    é pública e o aluno não pode descobrir a resposta pela API."""
+
     class Meta:
         model = Choice
         fields = ["id", "question", "text", "is_correct"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if not (request and is_teacher(request.user)):
+            data.pop("is_correct", None)
+        return data
 
 
 class QuestionSerializer(serializers.ModelSerializer):
