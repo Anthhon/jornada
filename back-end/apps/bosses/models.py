@@ -23,6 +23,10 @@ class Boss(models.Model):
             blank=True,
             verbose_name="Feitiços",
             )
+    is_active = models.BooleanField(
+            default=True,
+            verbose_name="Ativo"
+            )
 
     class Meta:
         ordering = ["name"]
@@ -33,11 +37,11 @@ class Boss(models.Model):
         return self.name
 
     # Weighted random pick of a spell (the boss 'AI'), none if no spells
-    def choose_spell(self):
+    def choose_spell(self, rng=random):
         links = list(self.boss_spells.select_related("spell").filter(spell__is_active=True))
         if not links:
             return None
-        picked = random.choices(links, weights=[l.weight for l in links], k=1)[0]
+        picked = rng.choices(links, weights=[l.weight for l in links], k=1)[0]
         return picked.spell
 
 

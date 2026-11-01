@@ -21,20 +21,21 @@ class StudentApiTests(TestCase):
         self.alfa = Group.objects.create(name="Alfa")
         self.beta = Group.objects.create(name="Beta")
 
-    def test_listagem_publica_e_filtro_por_grupo(self):
+    def test_listagem_do_professor_e_filtro_por_grupo(self):
         Student.objects.create(name="Ana", group=self.alfa)
         Student.objects.create(name="Bia", group=self.beta)
 
-        resp = anon_client().get("/api/students/")
+        resp = staff_client().get("/api/students/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data), 2)
 
-        filtrado = anon_client().get(f"/api/students/?group={self.alfa.id}")
+        filtrado = staff_client().get(f"/api/students/?group={self.alfa.id}")
         self.assertEqual(filtrado.status_code, 200)
         self.assertEqual(len(filtrado.data), 1)
         self.assertEqual(filtrado.data[0]["group_name"], "Alfa")
 
-    def test_visitante_nao_escreve(self):
+    def test_visitante_nao_le_nem_escreve(self):
+        self.assertEqual(anon_client().get("/api/students/").status_code, 401)
         resp = anon_client().post("/api/students/", {"name": "X"}, format="json")
         self.assertIn(resp.status_code, (401, 403))
 

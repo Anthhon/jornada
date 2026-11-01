@@ -28,6 +28,7 @@ class BossSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "max_hp",
+            "is_active",
             "spells",
             "spell_names",
         ]

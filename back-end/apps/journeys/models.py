@@ -123,6 +123,8 @@ class GroupJourney(models.Model):
 
 
 # State of a groups fight in one stage.
+# The Combatant fields (max_hp/hp/shield) are the HERO's; the boss state is in
+# the boss_* fields (the battle engine wraps both in the same combat interface).
 class StageProgress(Combatant):
     class Status(models.TextChoices):
         IN_PROGRESS = "PROG", "Em andamento"
@@ -143,6 +145,31 @@ class StageProgress(Combatant):
             "bosses.Boss",
             related_name="battles",
             on_delete=models.PROTECT
+            )
+    boss_max_hp = models.PositiveIntegerField(
+            default=0,
+            verbose_name="HP máximo do chefe"
+            )
+    boss_hp = models.PositiveIntegerField(
+            default=0,
+            verbose_name="HP atual do chefe"
+            )
+    boss_shield = models.PositiveIntegerField(
+            default=0,
+            verbose_name="Escudo do chefe"
+            )
+    turn = models.PositiveIntegerField(
+            default=0,
+            verbose_name="Turno atual",
+            help_text="Quantas rodadas já foram resolvidas."
+            )
+    current_question = models.ForeignKey(
+            "bosses.Question",
+            null=True,
+            blank=True,
+            related_name="+",
+            on_delete=models.SET_NULL,
+            verbose_name="Pergunta pendente"
             )
     score = models.PositiveIntegerField(
             default=0,
