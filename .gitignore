@@ -3,15 +3,6 @@
 Documentos/
 Personas/
 
-# Documentação de trabalho — fica SÓ local, nunca vai pro servidor remoto
-# (decisão de 26/10: versionamos apenas código + gates em tools/).
-# Continuamos trabalhando normalmente com esses arquivos; eles simplesmente
-# não são enviados ao remoto.
-docs/
-*.md
-!tools/*.md
-!back-end/API.md
-
 # Logs
 logs
 *.log
