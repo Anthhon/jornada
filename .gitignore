@@ -263,3 +263,5 @@ media/
 *.pyc
 *.db
 *.pid
+migrations/
+__init__.py
