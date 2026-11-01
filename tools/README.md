@@ -4,8 +4,9 @@ Pasta de gates reexecutáveis do backend (Jornada). Cada script testa um
 bloco de trabalho do `PLANO.md` e **sai com código de saída 0/1**, então
 serve de regressão manual e de check para CI no futuro.
 
-| script | o que valida | quando rodar |
+| script | o que faz | quando rodar |
 |---|---|---|
+| `setup_dev.sh` | **prepara o ambiente**: venv, dependências, gera as migrations (não versionadas) e migra o banco local | primeira vez, e depois de `git pull` que mudou models |
 | `validar_fundacao.sh` | gate da **fundação** (Fase 0): `.gitignore`, dependências, `check`, drift de migrations, `migrate` do zero, schema, testes Django | antes de commitar qualquer mudança de base; depois de mexer em `requirements.txt`, `.gitignore` ou models |
 | `validar_crud.sh` | gate do **CRUD** (Fase 1): `check`, drift, 14 models no admin, suíte (50+ casos) e **fumaça HTTP real** (runserver + ciclo JWT/POST/PATCH/DELETE + placar `/api/leaderboard/` via curl) | depois de mexer em serializers, views, urls, permissões ou admin |
 | `checar_schema.py` | regressões de **schema** do banco (chamado pelo gate) | sozinho, contra um `.sqlite3` específico |

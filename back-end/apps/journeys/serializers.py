@@ -105,12 +105,17 @@ class StageProgressSerializer(serializers.ModelSerializer):
             "max_hp",
             "hp",
             "shield",
+            "boss_max_hp",
+            "boss_hp",
+            "boss_shield",
+            "turn",
+            "current_question",
             "score",
             "status",
             "started_at",
             "finished_at",
         ]
-        read_only_fields = ["started_at"]
+        read_only_fields = ["started_at", "turn", "current_question"]
         validators = [
             validators.UniqueTogetherValidator(
                 queryset=StageProgress.objects.all(),

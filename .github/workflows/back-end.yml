@@ -1,0 +1,45 @@
+name: back-end
+
+on:
+  push:
+    branches: [main]
+    paths: ["back-end/**", "tools/**", ".github/workflows/back-end.yml"]
+  pull_request:
+    paths: ["back-end/**", "tools/**", ".github/workflows/back-end.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: back-end
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: back-end/requirements.txt
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      # As migrations não são versionadas (cada dev gera as suas); o CI faz o mesmo.
+      - name: Gerar migrations
+        run: python manage.py makemigrations users groups spells heroes bosses journeys --noinput
+
+      - name: Checagem do Django
+        run: python manage.py check
+
+      - name: Migrar banco do zero
+        run: python manage.py migrate --noinput
+
+      - name: Testes
+        run: python manage.py test --verbosity 2
+
+      - name: Schema OpenAPI gera sem erro
+        run: python manage.py spectacular --file /tmp/schema.yml

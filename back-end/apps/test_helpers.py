@@ -22,8 +22,11 @@ def staff_client(username="professor"):
 
 
 def user_client(username="aluno"):
-    """Client autenticado como aluno (não staff) — só leitura."""
+    """Client autenticado como aluno (tem registro de Student, não é staff)."""
+    from apps.users.models import Student
+
     user, _ = User.objects.get_or_create(username=username, defaults={})
+    Student.objects.get_or_create(user=user, defaults={"name": username})
     client = APIClient()
     client.force_authenticate(user=user)
     return client

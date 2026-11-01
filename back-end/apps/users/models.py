@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 class Profile(models.Model):
@@ -45,6 +46,18 @@ class Student(models.Model):
             null=True,
             blank=True,
             verbose_name="Grupo",
+            )
+    grade = models.DecimalField(
+            max_digits=4,
+            decimal_places=2,
+            null=True,
+            blank=True,
+            validators=[MinValueValidator(0), MaxValueValidator(10)],
+            verbose_name="Nota individual",
+            )
+    is_active = models.BooleanField(
+            default=True,
+            verbose_name="Ativo"
             )
     created_at = models.DateTimeField(
             auto_now_add=True,

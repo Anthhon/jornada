@@ -90,3 +90,76 @@ class LeaderboardApiTests(TestCase):
         self.assertIn(anon.status_code, (401, 403))
         staff = staff_client().post("/api/leaderboard/", {}, format="json")
         self.assertEqual(staff.status_code, 405)
+
+
+class GroupManagementTests(TestCase):
+    """Facilitar a edição de grupos com N alunos + pontos extras."""
+
+    def setUp(self):
+        from apps.users.models import Student
+
+        self.Student = Student
+        self.grupo = Group.objects.create(name="Alfa")
+        self.outro = Group.objects.create(name="Beta")
+        self.ana = Student.objects.create(name="Ana", group=self.grupo)
+        self.bia = Student.objects.create(name="Bia", group=self.grupo)
+        self.caio = Student.objects.create(name="Caio", group=self.outro)
+        self.davi = Student.objects.create(name="Davi")
+
+    def test_set_members_substitui_a_lista_inteira(self):
+        resp = staff_client().post(
+            f"/api/groups/{self.grupo.id}/set-members/",
+            {"students": [self.ana.id, self.caio.id, self.davi.id]},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["member_count"], 3)
+        self.bia.refresh_from_db()
+        self.assertIsNone(self.bia.group)  # saiu
+        self.caio.refresh_from_db()
+        self.assertEqual(self.caio.group_id, self.grupo.id)  # veio do outro grupo
+
+    def test_set_members_com_id_inexistente_nao_muda_nada(self):
+        resp = staff_client().post(
+            f"/api/groups/{self.grupo.id}/set-members/",
+            {"students": [self.ana.id, 9999]},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.bia.refresh_from_db()
+        self.assertEqual(self.bia.group_id, self.grupo.id)
+
+    def test_set_members_so_professor(self):
+        url = f"/api/groups/{self.grupo.id}/set-members/"
+        self.assertIn(anon_client().post(url, {"students": []}, format="json").status_code, (401, 403))
+        self.assertEqual(user_client().post(url, {"students": []}, format="json").status_code, 403)
+
+    def test_pontos_extras_somam_e_entram_no_total(self):
+        client = staff_client()
+        url = f"/api/groups/{self.grupo.id}/add-extra-points/"
+        client.post(url, {"amount": 5}, format="json")
+        resp = client.post(url, {"amount": 3}, format="json")
+        self.assertEqual(resp.data["extra_points"], 8)
+        self.assertEqual(resp.data["total_points"], 8)
+        desconto = client.post(url, {"amount": -2}, format="json")
+        self.assertEqual(desconto.data["extra_points"], 6)
+
+    def test_placar_ordena_por_total_e_oculta_inativos(self):
+        self.grupo.points = 10
+        self.grupo.extra_points = 5          # total 15
+        self.grupo.save()
+        self.outro.points = 12                # total 12
+        self.outro.save()
+        Group.objects.create(name="Fantasma", points=999, is_active=False)
+        resp = anon_client().get("/api/leaderboard/")
+        self.assertEqual(
+            [(e["name"], e["total_points"]) for e in resp.data],
+            [("Alfa", 15), ("Beta", 12)],
+        )
+
+    def test_desativar_grupo_via_patch(self):
+        resp = staff_client().patch(
+            f"/api/groups/{self.grupo.id}/", {"is_active": False}, format="json"
+        )
+        self.assertFalse(resp.data["is_active"])
+        self.assertEqual(len(anon_client().get("/api/groups/?active=true").data), 1)

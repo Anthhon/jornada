@@ -24,7 +24,7 @@ PY="$BE/.venv/bin/python"
 TMP_DB="crud_gate.sqlite3"
 PORT=8791
 BASE="http://127.0.0.1:$PORT"
-SRV_LOG="$(mktemp /tmp/opencode/gate_srv.XXXXXX)"
+SRV_LOG="$(mktemp "${TMPDIR:-/tmp}/gate_srv.XXXXXX")"
 SERVER_PID=""
 
 pass=0
@@ -72,11 +72,12 @@ else
 fi
 
 # --- 3. models ≡ migrations --------------------------------------------------
-title "3. models ≡ migrations (sem drift)"
+title "3. models geram migrations sem erro"
+"$PY" "$BE/manage.py" makemigrations users groups spells heroes bosses journeys --noinput >/dev/null 2>&1
 if out=$("$PY" "$BE/manage.py" makemigrations --check --dry-run 2>&1); then
-    ok "makemigrations --check: nada pendente"
+    ok "migrations geradas e consistentes com os models"
 else
-    bad "model alterado sem migration" "$out"
+    bad "models e migrations inconsistentes" "$out"
 fi
 
 # --- 4. admin ----------------------------------------------------------------

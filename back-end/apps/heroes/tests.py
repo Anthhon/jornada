@@ -1,6 +1,7 @@
 from django.test import TestCase
 
 from apps.groups.models import Group
+from apps.journeys.models import Journey
 from apps.spells.models import Spell
 from apps.test_helpers import anon_client, staff_client, user_client
 
@@ -8,16 +9,18 @@ from .models import Hero
 
 
 class HeroApiTests(TestCase):
-    """CRUD de heróis: 1 por equipe (OneToOne) + feitiços equipados."""
+    """CRUD de heróis: 1 por equipe em cada jornada + feitiços equipados."""
 
     def setUp(self):
+        self.jornada = Journey.objects.create(name="Jornada 1")
+        self.outra_jornada = Journey.objects.create(name="Jornada 2")
         self.grupo = Group.objects.create(name="Guerreiros")
         self.outro_grupo = Group.objects.create(name="Magos")
         self.bola = Spell.objects.create(name="Bola de Fogo", base_value=7)
         self.cura = Spell.objects.create(name="Cura", spell_type=Spell.SpellType.HEAL)
 
     def test_listagem_publica_com_nomes(self):
-        heroi = Hero.objects.create(name="Kovu", group=self.grupo)
+        heroi = Hero.objects.create(name="Kovu", group=self.grupo, journey=self.jornada)
         heroi.spells.set([self.bola])  # M2M não entra no create()
         resp = anon_client().get("/api/heroes/")
         self.assertEqual(resp.status_code, 200)
@@ -39,6 +42,7 @@ class HeroApiTests(TestCase):
             {
                 "name": "Emy",
                 "group": self.outro_grupo.id,
+                "journey": self.jornada.id,
                 "spells": [self.bola.id, self.cura.id],
                 "power_bonus": 2,
             },
@@ -56,9 +60,26 @@ class HeroApiTests(TestCase):
         self.assertEqual(client.delete(url).status_code, 204)
         self.assertFalse(Hero.objects.exists())
 
-    def test_dois_herois_na_mesma_equipe_rejeitado(self):
-        Hero.objects.create(name="Primeiro", group=self.grupo)
+    def test_dois_herois_na_mesma_equipe_e_jornada_rejeitado(self):
+        Hero.objects.create(name="Primeiro", group=self.grupo, journey=self.jornada)
         resp = staff_client().post(
-            "/api/heroes/", {"name": "Segundo", "group": self.grupo.id}, format="json"
+            "/api/heroes/",
+            {"name": "Segundo", "group": self.grupo.id, "journey": self.jornada.id},
+            format="json",
         )
         self.assertEqual(resp.status_code, 400)
+
+    def test_mesma_equipe_pode_ter_heroi_em_outra_jornada(self):
+        Hero.objects.create(name="Primeiro", group=self.grupo, journey=self.jornada)
+        resp = staff_client().post(
+            "/api/heroes/",
+            {"name": "Segundo", "group": self.grupo.id, "journey": self.outra_jornada.id},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+
+    def test_filtro_por_jornada(self):
+        Hero.objects.create(name="A", group=self.grupo, journey=self.jornada)
+        Hero.objects.create(name="B", group=self.grupo, journey=self.outra_jornada)
+        resp = anon_client().get(f"/api/heroes/?journey={self.outra_jornada.id}")
+        self.assertEqual([h["name"] for h in resp.data], ["B"])

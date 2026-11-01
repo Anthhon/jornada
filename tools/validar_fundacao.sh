@@ -5,10 +5,10 @@
 #
 # O que valida (cada check = uma regressão já vista no projeto):
 #   1. pré-requisitos      venv + requirements.txt existem
-#   2. .gitignore          NÃO ignora migrations (bug da linha 'migrations/')
+#   2. .gitignore          IGNORA migrations (cada dev gera as suas)
 #   3. dependências        pins do requirements.txt instaladas na versão exata
 #   4. manage.py check     0 issues
-#   5. models ≡ migrations makemigrations --check não acha drift
+#   5. models → migrations makemigrations gera e --check fecha sem drift
 #   6. migrate do zero     aplica tudo num SQLite TEMPORÁRIO (dev db intocado)
 #   7. schema              tools/checar_schema.py (tabelas/FKs/colunas)
 #   8. manage.py test      runner Django verde
@@ -60,15 +60,17 @@ else
     exit 1
 fi
 
-# --- 2. .gitignore versiona migrations --------------------------------------
-title "2. .gitignore versiona migrations"
+# --- 2. .gitignore IGNORA migrations (decisão do time) ----------------------
+# Cada dev gera as suas com tools/setup_dev.sh — migrations versionadas
+# causavam conflito entre desenvolvedores.
+title "2. .gitignore ignora migrations (cada dev gera as suas)"
 if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     for app in users groups spells heroes bosses journeys; do
         p="back-end/apps/$app/migrations/0001_initial.py"
         if git -C "$ROOT" check-ignore -q "$p" 2>/dev/null; then
-            bad ".gitignore IGNORA $p" "remova a linha 'migrations/' do .gitignore"
+            ok "ignorado (como combinado): $p"
         else
-            ok "versionável: $p"
+            bad "migration NÃO está ignorada: $p" "garanta 'migrations/' no .gitignore"
         fi
     done
 else
@@ -127,11 +129,12 @@ else
 fi
 
 # --- 5. models ≡ migrations --------------------------------------------------
-title "5. models ≡ migrations (sem drift)"
+title "5. models geram migrations sem erro"
+"$PY" "$BE/manage.py" makemigrations users groups spells heroes bosses journeys --noinput >/dev/null 2>&1
 if out=$("$PY" "$BE/manage.py" makemigrations --check --dry-run 2>&1); then
-    ok "makemigrations --check: nada pendente"
+    ok "migrations geradas e consistentes com os models"
 else
-    bad "model alterado sem migration" "$out"
+    bad "models e migrations inconsistentes" "$out"
 fi
 
 # --- 6. migrate do zero (banco temporário) -----------------------------------
