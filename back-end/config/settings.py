@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
 
@@ -21,12 +22,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-onc#$haj9*+s4245+tk9^nqv-lh59h9wm72!+u)+v-gh$9%6*u'
+# Em produção defina DJANGO_SECRET_KEY (o valor padrão é só para desenvolvimento).
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-onc#$haj9*+s4245+tk9^nqv-lh59h9wm72!+u)+v-gh$9%6*u',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Padrão: ligado (dev). Em produção: DJANGO_DEBUG=false
+DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = ['*']
+# Lista separada por vírgula. Padrão '*' só em dev; em produção liste os hosts.
+ALLOWED_HOSTS = [
+    h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',') if h.strip()
+]
 
 
 # Application definition
@@ -43,6 +52,7 @@ INSTALLED_APPS = [
         # Third-party
         'rest_framework',
         'corsheaders',
+        'drf_spectacular',
 
         # Local apps
         'apps.users',
@@ -91,7 +101,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            # DB_NAME aponta para outro arquivo de banco (usado pelos gates em
+            # tools/ para validar `migrate` num SQLite temporário, sem tocar no
+            # db.sqlite3 de desenvolvimento).
+            'NAME': BASE_DIR / os.environ.get('DB_NAME', 'db.sqlite3'),
             }
         }
 
@@ -137,16 +150,35 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Allows React to gather information from custom port
-CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
+# Allows React to gather information from custom port.
+# Em produção: CORS_ALLOWED_ORIGINS=https://meu-front.exemplo (vírgula p/ vários)
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+    if o.strip()
+]
 
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    # Padrão: leitura aberta, escrita só do professor (usuário que não é
+    # aluno, ou staff). Ver apps/users/permissions.py.
+    'DEFAULT_PERMISSION_CLASSES': (
+        'apps.users.permissions.ReadOnlyOrStaff',
     ),
 }
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+}
+
+# Contrato da API em OpenAPI (JSON/YAML) — o front gera tipos a partir dele.
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Jornada API',
+    'DESCRIPTION': 'Back-end do sistema de gamificação de jornadas (D&D).',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }

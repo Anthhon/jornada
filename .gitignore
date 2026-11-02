@@ -1,3 +1,8 @@
+# Conteúdo de referência da disciplina e exercícios com dados/materiais de
+# terceiros — não versionar (regra dura §4.5 do PLANO.md)
+Documentos/
+Personas/
+
 # Logs
 logs
 *.log
@@ -164,7 +169,6 @@ lib64/
 parts/
 sdist/
 var/
-migrations/
 wheels/
 *.egg-info/
 .installed.cfg
@@ -251,7 +255,7 @@ media/
 *.pyc
 *.db
 *.pid
-.lovable_exports/
+
 
 # Front-end source directories are not Python build artifacts.
 !front-end/lib/

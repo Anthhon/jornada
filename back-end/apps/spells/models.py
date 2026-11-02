@@ -1,9 +1,62 @@
 from django.db import models
 
 
-class Combatant(models.Model):
+class CombatMixin:
+    """Regras de combate (dano, cura, escudo) sem depender de banco.
+
+    Quem usa só precisa expor ``hp``, ``max_hp`` e ``shield`` e implementar
+    ``_commit(fields)`` (persistir os campos alterados). ``Combatant`` persiste
+    no próprio model; o motor de batalha usa adaptadores que gravam no
+    ``StageProgress`` (ver ``apps/journeys/battle.py``).
+    """
+
+    def _commit(self, fields):
+        raise NotImplementedError
+
+    @property
+    # Check if entity still alive
+    def is_alive(self):
+        return self.hp > 0
+
+    # Damage entity
+    def take_damage(self, amount):
+        amount = max(0, int(amount))
+
+        # Shield absorbs damage
+        absorbed = min(self.shield, amount)
+        self.shield -= absorbed
+
+        hp_loss = min(self.hp, amount - absorbed)
+        self.hp -= hp_loss
+        self._commit(["hp", "shield"])
+        return absorbed + hp_loss
+
+    # Heal entity
+    def heal(self, amount):
+        amount = max(0, int(amount))
+        healed = min(self.max_hp - self.hp, amount)  # Avoid healing above max_hp
+
+        self.hp += healed
+        self._commit(["hp"])
+        return healed
+
+    # Shield entity
+    def add_shield(self, amount):
+        amount = max(0, int(amount))
+        self.shield += amount
+        self._commit(["shield"])
+        return amount
+
+    # Restore entity HP
+    def restore_full(self):
+        self.hp = self.max_hp
+        self.shield = 0
+        self._commit(["hp", "shield"])
+
+
+class Combatant(CombatMixin, models.Model):
     # Abstract base for anything that battles.
-    # Ex.: Hero and bosses inherit it, so any Spell can
+    # Ex.: Hero and StageProgress inherit it, so any Spell can
     # target any of them through the same interface.
     max_hp = models.PositiveIntegerField(
             default=100,
@@ -21,45 +74,8 @@ class Combatant(models.Model):
     class Meta:
         abstract = True
 
-    @property
-    # Check if entity still alive
-    def is_alive(self):
-        return self.hp > 0
-
-    # Damage entity 
-    def take_damage(self, amount):
-        amount = max(0, int(amount))
-
-        # Shield absorbs damage
-        absorbed = min(self.shield, amount)
-        self.shield -= absorbed
-
-        hp_loss = min(self.hp, amount - absorbed)
-        self.hp -= hp_loss
-        self.save(update_fields=["hp", "shield"])
-        return absorbed + hp_loss
-
-    # Heal entity
-    def heal(self, amount):
-        amount = max(0, int(amount))
-        healed = min(self.max_hp - self.hp, amount) # Avoid healing above max_hp
-
-        self.hp += healed
-        self.save(update_fields=["hp"])
-        return healed
-
-    # Shield entity
-    def add_shield(self, amount):
-        amount = max(0, int(amount))
-        self.shield += amount
-        self.save(update_fields=["shield"])
-        return amount
-
-    # Restore entity HP
-    def restore_full(self):
-        self.hp = self.max_hp
-        self.shield = 0
-        self.save(update_fields=["hp", "shield"])
+    def _commit(self, fields):
+        self.save(update_fields=fields)
 
 
 class Spell(models.Model):

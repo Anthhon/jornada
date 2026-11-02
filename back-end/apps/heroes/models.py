@@ -2,18 +2,29 @@ from django.db import models
 from apps.spells.models import Combatant
 
 
-# In-game representative of a group through a stage in journey
+# In-game representative of a group through a journey (1 hero per group
+# per journey). The HP of a fight lives in StageProgress, each stage starts
+# with the hero at max_hp.
 class Hero(Combatant):
     name = models.CharField(
             max_length=100,
-            unique=True,
             verbose_name="Nome"
             )
-    group = models.OneToOneField(
+    group = models.ForeignKey(
             "groups.Group",
-            related_name="hero",
+            related_name="heroes",
             on_delete=models.CASCADE,
             verbose_name="Grupo",
+            )
+    journey = models.ForeignKey(
+            "journeys.Journey",
+            related_name="heroes",
+            on_delete=models.CASCADE,
+            verbose_name="Jornada",
+            )
+    is_active = models.BooleanField(
+            default=True,
+            verbose_name="Ativo"
             )
     spells = models.ManyToManyField(
             "spells.Spell",
@@ -34,6 +45,9 @@ class Hero(Combatant):
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+                models.UniqueConstraint(fields=["group", "journey"], name="unique_hero_group_journey")
+                ]
         verbose_name = "Herói"
         verbose_name_plural = "Heróis"
 

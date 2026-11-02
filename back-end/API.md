@@ -1,138 +1,70 @@
-# API da Jornada
+# API do back-end (Jornada)
 
-Este documento lista as rotas que o back-end disponibiliza atualmente.
+Back-end **somente API JSON** (Django + DRF). Nenhuma página é renderizada;
+toda visualização é do front-end React. Contrato completo e sempre atualizado:
+`GET /api/schema/` (OpenAPI) — o front pode gerar tipos a partir dele.
 
-## Endereço local
+## Rodar
 
-Com o servidor iniciado por `python manage.py runserver`, a API fica em:
-
-```text
-http://127.0.0.1:8000
+```bash
+bash tools/setup_dev.sh   # venv, dependências, migrations (não versionadas), migrate
+back-end/.venv/bin/python back-end/manage.py createsuperuser   # primeiro professor
+back-end/.venv/bin/python back-end/manage.py runserver
 ```
 
-Todos os exemplos abaixo usam esse endereço. No front-end, guarde-o em uma
-variável de ambiente quando a integração começar.
+Produção (variáveis de ambiente): `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
+`DJANGO_ALLOWED_HOSTS=api.exemplo.com`, `CORS_ALLOWED_ORIGINS=https://front.exemplo.com`.
 
-## Autenticação
+## Autenticação e papéis
 
-As rotas protegidas usam JWT. Primeiro faça login em `POST /api/token/` e
-guarde o valor de `access`. Nas chamadas protegidas, envie-o no cabeçalho:
+- `POST /api/token/` `{username, password}` → `{access, refresh}`; `POST /api/token/refresh/`.
+- Enviar `Authorization: Bearer <access>`.
+- `GET /api/me/` → `{..., role: "teacher" | "student", student: {...} | null}`.
+- **Professor/admin** = usuário que não tem registro de aluno (ou é staff): acesso total.
+- **Aluno**: lê o conteúdo do jogo, vê só o **próprio** perfil (`/api/students/`), joga a batalha do **próprio grupo**.
+- Visitante: só leitura pública (conteúdo, placar, estado da batalha).
 
-```http
-Authorization: Bearer SEU_ACCESS_TOKEN
-```
+## Recursos (CRUD: GET/POST/PUT/PATCH/DELETE; escrita só professor)
 
-## Rotas
+`users` (DELETE desativa) · `students` · `groups` · `spells` · `heroes` · `bosses` ·
+`boss-spells` · `questions` · `choices` · `journeys` · `stages` · `group-journeys` ·
+`stage-progress` · `battle-events` (somente leitura/criação — log append-only).
+"Desativar" = `PATCH {"is_active": false}` (aluno desativado também perde o login).
 
-### Login
+| Endpoint | Para quê |
+|---|---|
+| `POST /api/students/bulk/` `{names:[...], group?}` | cria N alunos; devolve `[{id,name,username,password}]` (senha só aparece aqui) |
+| `POST /api/groups/{id}/set-members/` `{students:[ids]}` | define de uma vez os membros do grupo |
+| `POST /api/groups/{id}/add-extra-points/` `{amount}` | pontos extras da equipe (negativo desconta) |
+| `PATCH /api/students/{id}/` `{grade}` | nota individual (0–10) |
+| `GET /api/group-journeys/?group=&journey=&status=&student=` | histórico de jornadas (status `PROG`/`DONE`/`FAIL`) |
+| `GET /api/group-journeys/{id}/summary/` | pontuação final, nota **sugerida** (pontos/máximo × 10) e desempenho por aluno |
+| `GET /api/leaderboard/` | placar público (pontos de batalha + extras) |
+| `GET /api/heroes/?group=&journey=` | herói do grupo (1 por grupo **por jornada**) |
 
-`POST /api/token/`
+## Batalha
 
-Gera os tokens de acesso para um usuário já cadastrado no Django.
+Pré-requisitos: `GroupJourney` (grupo na jornada), `Hero` do grupo naquela jornada,
+etapas com `boss_pool`, chefes com perguntas (≥2 alternativas, 1 correta).
 
-Corpo JSON:
+1. `POST /api/battle/start/` `{group_journey, stage?}` → 201 com o **estado**.
+   Sorteia o chefe do `boss_pool` da próxima etapa e a primeira pergunta.
+2. `GET /api/battle/{id}/` → estado (público; use polling para o placar ao vivo).
+3. `POST /api/battle/{id}/answer/` `{choice, student?, spell?}` →
+   `{correct, finished, victory, state}`.
 
-```json
-{
-  "username": "nome_do_usuario",
-  "password": "senha_do_usuario"
-}
-```
+Regras de uma rodada:
+- **Acertou**: ganha `question.points` de pontuação e causa esse dano ao chefe; se mandou
+  `spell`, o feitiço também vale (dano no chefe; cura/escudo no herói; `power_bonus` do herói soma).
+- **Errou**: sem dano e sem pontos (feitiço não é usado nem entra em recarga).
+- Se o chefe sobreviveu, ele lança um feitiço (sorteado por peso) — dano no herói, cura/escudo nele mesmo.
+- Feitiço com `cooldown_turns = N` fica indisponível por N turnos após o uso (`spells[].ready`).
+- **Vitória** = HP do chefe 0 → etapa `DONE`. **Derrota** = HP do herói 0 (ou 50 turnos) → etapa `FAIL`.
+- Em ambos os casos os pontos da etapa (limitados a `stage.max_score`) vão para o grupo e o grupo
+  segue para a próxima etapa; ao fim da última, a jornada do grupo vira `DONE`.
+- A alternativa correta **nunca** aparece no estado.
 
-Resposta de sucesso (`200 OK`):
+Estado: `{id, status, turn, score, group_journey, stage, hero{hp,max_hp,shield,...},
+boss{hp,max_hp,shield,...}, question{id,text,points,choices[{id,text}]}|null, spells[], events[]}`.
 
-```json
-{
-  "refresh": "token-de-longa-duracao",
-  "access": "token-de-curta-duracao"
-}
-```
-
-Se as credenciais estiverem incorretas, a resposta é `401 Unauthorized`.
-
-### Renovar token de acesso
-
-`POST /api/token/refresh/`
-
-Use esta rota quando o token `access` expirar. O `refresh` dura mais tempo.
-
-Corpo JSON:
-
-```json
-{
-  "refresh": "token-de-longa-duracao"
-}
-```
-
-Resposta de sucesso (`200 OK`):
-
-```json
-{
-  "access": "novo-token-de-curta-duracao"
-}
-```
-
-### Listar usuários
-
-`GET /api/users/`
-
-Retorna todos os usuários, do mais recentemente criado para o mais antigo.
-Esta rota exige autenticação JWT.
-
-Cabeçalho necessário:
-
-```http
-Authorization: Bearer SEU_ACCESS_TOKEN
-```
-
-Resposta de sucesso (`200 OK`):
-
-```json
-[
-  {
-    "id": 1,
-    "username": "ana",
-    "email": "ana@exemplo.com",
-    "first_name": "Ana",
-    "last_name": "Silva",
-    "date_joined": "2026-11-02T12:00:00Z"
-  }
-]
-```
-
-Sem token válido, a resposta é `401 Unauthorized`.
-
-## Painel administrativo
-
-`GET /admin/`
-
-Esta não é uma rota REST para o front-end. É a interface administrativa padrão
-do Django, usada no navegador por administradores. Para criar um usuário admin:
-
-```powershell
-python manage.py createsuperuser
-```
-
-## Exemplo no front-end
-
-```ts
-const resposta = await fetch("http://127.0.0.1:8000/api/users/", {
-  headers: {
-    Authorization: `Bearer ${accessToken}`,
-  },
-})
-
-const usuarios = await resposta.json()
-```
-
-## Onde estas rotas ficam no código
-
-| Rota | Arquivo que a registra | Implementação |
-| --- | --- | --- |
-| `/api/token/` | `config/urls.py` | `TokenObtainPairView` (Simple JWT) |
-| `/api/token/refresh/` | `config/urls.py` | `TokenRefreshView` (Simple JWT) |
-| `/api/users/` | `apps/users/urls.py` | `apps/users/views.py` (`user_list`) |
-| `/admin/` | `config/urls.py` | Django Admin |
-
-Apps como `heroes`, `spells`, `bosses` e `journeys` ainda não têm rotas
-registradas; por isso ainda não possuem endpoints consumíveis.
+Erros de regra: HTTP 400 `{"detail": "..."}`; sem login 401; sem permissão 403.

@@ -10,6 +10,15 @@ class Group(models.Model):
             default=0,
             verbose_name="Qtd. de pontos",
             )
+    extra_points = models.IntegerField(
+            default=0,
+            verbose_name="Pontos extras",
+            help_text="Lançados manualmente pelo professor.",
+            )
+    is_active = models.BooleanField(
+            default=True,
+            verbose_name="Ativo"
+            )
     created_at = models.DateTimeField(
             auto_now_add=True,
             blank=True,
@@ -28,7 +37,18 @@ class Group(models.Model):
     def member_count(self):
         return self.students.count()
 
-    # Add points to respective group
+    @property
+    def total_points(self):
+        return self.points + self.extra_points
+
+    # Add points (earned in battles) to respective group
     def add_points(self, amount):
-        self.points += int(amount)
+        self.points = models.F("points") + int(amount)
         self.save(update_fields=["points"])
+        self.refresh_from_db(fields=["points"])
+
+    # Add extra points (given by the teacher) to respective group
+    def add_extra_points(self, amount):
+        self.extra_points = models.F("extra_points") + int(amount)
+        self.save(update_fields=["extra_points"])
+        self.refresh_from_db(fields=["extra_points"])
