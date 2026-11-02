@@ -3,6 +3,7 @@ import { makeStages } from "@/lib/journey/stages";
 import type { Incursion } from "@/features/missions";
 import type { State } from "@/stores/journey-store.types";
 import { create } from "zustand";
+import { tokenStorage } from "@/lib/token-storage";
 
 const uid = (p: string) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const now = () => new Date().toISOString().slice(0, 16);
@@ -24,6 +25,7 @@ export const useJornada = create<State>((set, get) => ({
   questions: seedQuestions,
   incursions: seedIncursions,
   setSession: (session) => {
+    if (!session) tokenStorage.clear();
     if (typeof window !== "undefined") {
       if (session) sessionStorage.setItem("jornada-session", JSON.stringify(session));
       else sessionStorage.removeItem("jornada-session");
@@ -95,6 +97,10 @@ export const useJornada = create<State>((set, get) => ({
 
 export function restoreSession() {
   if (typeof window === "undefined") return;
+  if (!tokenStorage.read()) {
+    useJornada.getState().setSession(null);
+    return;
+  }
   const raw = sessionStorage.getItem("jornada-session");
   if (raw) {
     try {

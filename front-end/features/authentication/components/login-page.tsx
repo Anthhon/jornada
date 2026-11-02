@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Crest } from "@/features/journey/components/crest";
 import { Field, Scroll, SubmitButton } from "@/features/journey/components/ui";
 import { Link, useNavigate } from "@/lib/router-compat";
-import { mockCredentials } from "@/mocks/fixtures/authentication";
-import { fakeSave } from "@/mocks/latency";
+import { login } from "../services/authentication-service";
+import { isAxiosError } from "axios";
 import { restoreSession, useJornada } from "@/stores/journey-store";
 import { CalendarDays, KeyRound, User } from "lucide-react";
 import { useEffect } from "react";
@@ -27,12 +27,15 @@ function Login() {
   }, [navigate]);
 
   async function submit({ username, password }: LoginValues) {
-    await fakeSave();
-    if (username === mockCredentials.username && password === mockCredentials.password) {
+    try {
+      await login({ username, password });
       setSession({ role: "professor", name: username, username });
       navigate({ to: "/salao" });
-    } else {
-      setError("root", { message: "Usuário ou senha não conferem." });
+    } catch (error) {
+      const message = isAxiosError(error) && error.response?.status === 401
+        ? "Usuário ou senha não conferem."
+        : "Não foi possível acessar a API. Verifique a conexão e tente novamente.";
+      setError("root", { message });
     }
   }
 
@@ -62,7 +65,6 @@ function Login() {
             <SubmitButton loading={loading}>Entrar na guilda</SubmitButton>
           </form>
         </Scroll>
-        <p className="mt-5 text-center text-xs text-muted-foreground">Demonstração: professor / jornada123</p>
         <Button asChild variant="ghost" className="mt-3 w-full"><Link to="/"><CalendarDays /> Voltar à página inicial</Link></Button>
       </div>
     </main>

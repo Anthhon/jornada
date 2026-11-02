@@ -25,12 +25,14 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react
 import { Crest } from "@/features/journey/components/crest";
 import { cn } from "@/lib/utils";
 import { restoreSession, useJornada } from "@/stores/journey-store";
+import { UNAUTHORIZED_EVENT } from "@/lib/api";
 
 const navigation = [
   { href: "/agenda", label: "Agenda de incursões", icon: CalendarDays },
   { href: "/dashboard", label: "Salão da Guilda", icon: Castle },
   { href: "/missions", label: "Missões", icon: Swords },
   { href: "/students", label: "Aventureiros", icon: Users },
+  { href: "/users", label: "Usuários da API", icon: Users },
   { href: "/groups", label: "Grupos", icon: Shield },
   { href: "/heroes", label: "Heróis", icon: Flame },
   { href: "/skills", label: "Habilidades", icon: BookOpen },
@@ -123,7 +125,10 @@ export function TeacherShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     restoreSession();
-  }, []);
+    const expire = () => setSession(null);
+    window.addEventListener(UNAUTHORIZED_EVENT, expire);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, expire);
+  }, [setSession]);
 
   useEffect(() => {
     if (ready && session?.role !== "professor") router.replace("/login");
