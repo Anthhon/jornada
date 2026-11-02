@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Crest } from "@/features/journey/components/crest";
 import { Field, Scroll, SubmitButton } from "@/features/journey/components/ui";
 import { Link, useNavigate } from "@/lib/router-compat";
+import { MOCKING_ENABLED } from "@/lib/api-config";
 import { login } from "../services/authentication-service";
 import { isAxiosError } from "axios";
 import { restoreSession, useJornada } from "@/stores/journey-store";
@@ -65,6 +66,7 @@ function Login() {
             <SubmitButton loading={loading}>Entrar na guilda</SubmitButton>
           </form>
         </Scroll>
+        {MOCKING_ENABLED && <p className="mt-5 text-center text-xs text-muted-foreground">Demonstração: professor / jornada123</p>}
         <Button asChild variant="ghost" className="mt-3 w-full"><Link to="/"><CalendarDays /> Voltar à página inicial</Link></Button>
       </div>
     </main>

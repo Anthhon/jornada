@@ -11,7 +11,15 @@ export function createApiClient(storage: TokenStorage = tokenStorage, onUnauthor
   const client = axios.create({ baseURL: API_BASE_URL, timeout: 15000 });
   const authClient = axios.create({ baseURL: API_BASE_URL, timeout: 15000 });
   let refreshRequest: Promise<string> | null = null;
-  client.interceptors.request.use((config) => {
+  async function prepareMocks() {
+    if (typeof window !== "undefined" && process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_API_MOCKING === "enabled") {
+      const { enableMocking } = await import("@/mocks/browser");
+      await enableMocking();
+    }
+  }
+  authClient.interceptors.request.use(async (config) => { await prepareMocks(); return config; });
+  client.interceptors.request.use(async (config) => {
+    await prepareMocks();
     const tokens = storage.read();
     if (tokens) config.headers.Authorization = `Bearer ${tokens.access}`;
     return config;
