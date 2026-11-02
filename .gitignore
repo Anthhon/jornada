@@ -251,3 +251,8 @@ media/
 *.pyc
 *.db
 *.pid
+.lovable_exports/
+
+# Front-end source directories are not Python build artifacts.
+!front-end/lib/
+!front-end/lib/**
