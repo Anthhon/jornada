@@ -39,7 +39,7 @@ export function PublicHeader() {
   return (
     <>
       <header className="guild-public-header relative z-30">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-4 md:px-10">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-3 px-5 py-4 md:px-8 xl:px-10 2xl:px-12">
           <button
             type="button"
             className="inline-flex h-11 w-11 items-center justify-center rounded-md transition-colors hover:bg-guild-green"
@@ -135,7 +135,7 @@ function PublicAgenda() {
   }, [query]);
 
   return (
-    <section id="agenda" className="mx-auto w-full max-w-7xl px-5 py-10 md:px-10 md:py-12">
+    <section id="agenda" className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-8 md:py-12 xl:px-10 2xl:px-12">
       <div className="mb-8">
         <h2 className="text-[1.85rem] leading-tight text-foreground">Agenda de incursões</h2>
         <p className="mt-1.5 max-w-xl font-reading text-muted-foreground">
@@ -272,10 +272,10 @@ export function LandingPage() {
             </div>
           </div>
         </section>
-        <section id="herois" className="mx-auto w-full max-w-7xl px-5 py-10 md:px-10 md:py-12">
+        <section id="herois" className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-8 md:py-12 xl:px-10 2xl:px-12">
           <h2 className="text-[1.85rem] leading-tight text-foreground">Heróis</h2>
         </section>
-        <section id="bosses" className="mx-auto w-full max-w-7xl px-5 py-10 md:px-10 md:py-12">
+        <section id="bosses" className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-8 md:py-12 xl:px-10 2xl:px-12">
           <h2 className="text-[1.85rem] leading-tight text-foreground">Bosses</h2>
         </section>
         <div className="guild-agenda-band">

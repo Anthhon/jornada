@@ -182,7 +182,7 @@ export function TeacherShell({ children }: { children: ReactNode }) {
             <FooterEmblem />
           </SheetContent>
         </Sheet>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8 md:px-10 md:py-12">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] flex-1 px-5 py-8 md:px-8 md:py-12 xl:px-10 2xl:px-12">{children}</main>
       </div>
 
       <Confirm
