@@ -28,9 +28,10 @@ function Login() {
   }, [navigate]);
 
   async function submit({ username, password }: LoginValues) {
+    const normalizedUsername = username.trim();
     try {
-      await login({ username, password });
-      setSession({ role: "professor", name: username, username });
+      await login({ username: normalizedUsername, password });
+      setSession({ role: "professor", name: normalizedUsername, username: normalizedUsername });
       navigate({ to: "/salao" });
     } catch (error) {
       const message = isAxiosError(error) && error.response?.status === 401

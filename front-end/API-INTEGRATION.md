@@ -62,6 +62,8 @@ label is UI metadata, not a verified claim. A `/me/` endpoint with explicit role
 is needed before introducing different access levels. Logout currently removes
 local credentials; backend refresh-token revocation is not implemented.
 
+Usernames are trimmed before login; passwords are sent unchanged.
+
 Feature services return parsed data, rather than `AxiosResponse`, and validate
 responses with Zod. `features/users/types/user.ts` matches Django's snake_case DTO.
 There is no automatic conversion from `User` to `Student`: accounts and student

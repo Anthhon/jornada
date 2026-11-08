@@ -42,6 +42,11 @@ test("wrong credentials and missing authentication return 401", async () => {
   assert.equal(storage.read(), null);
 });
 
+test("login normalizes username whitespace without changing the password", async () => {
+  await login({ username: "  professor  ", password: mockCredentials.password });
+  await assert.rejects(login({ username: mockCredentials.username, password: `${mockCredentials.password} ` }), { status: 401 });
+});
+
 test("concurrent 401 responses share one refresh and retry successfully", async () => {
   const { authClient, client, storage } = context();
   storage.write((await authClient.post<TokenPair>("/token/", mockCredentials)).data);
