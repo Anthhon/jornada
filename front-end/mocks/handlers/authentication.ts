@@ -2,12 +2,29 @@ import { http, HttpResponse } from "msw";
 import { API_BASE_URL } from "@/lib/api-config";
 import { mockCredentials, mockUser } from "../fixtures/authentication";
 
-export function createAuthenticationHandlers() {
-  const accessTokens = new Set<string>();
-  const refreshTokens = new Set<string>();
+type MockTokenStorage = Pick<Storage, "getItem" | "setItem">;
+const registryKey = "jornada-mock-tokens";
+
+function browserStorage(): MockTokenStorage | undefined {
+  try { return typeof window !== "undefined" ? window.sessionStorage : undefined; }
+  catch { return undefined; }
+}
+
+export function createAuthenticationHandlers(storage: MockTokenStorage | undefined = browserStorage()) {
+  let saved: { access?: unknown; refresh?: unknown } = {};
+  try { saved = JSON.parse(storage?.getItem(registryKey) ?? "{}") ?? {}; }
+  catch { /* Um registro inválido começa uma nova sessão de demonstração. */ }
+  const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  const accessTokens = new Set(strings(saved.access));
+  const refreshTokens = new Set(strings(saved.refresh));
+  function persist() {
+    try { storage?.setItem(registryKey, JSON.stringify({ access: [...accessTokens], refresh: [...refreshTokens] })); }
+    catch { /* Sem armazenamento, os mocks continuam funcionando até recarregar a página. */ }
+  }
   function issueAccess() {
     const token = `msw-access-${crypto.randomUUID()}`;
     accessTokens.add(token);
+    persist();
     return token;
   }
   return [

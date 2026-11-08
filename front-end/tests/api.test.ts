@@ -47,6 +47,21 @@ test("login normalizes username whitespace without changing the password", async
   await assert.rejects(login({ username: mockCredentials.username, password: `${mockCredentials.password} ` }), { status: 401 });
 });
 
+test("mock sessions survive reloading handlers and still reject unknown tokens", async () => {
+  const values = new Map<string, string>();
+  const registry = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+  server.resetHandlers(...createAuthenticationHandlers(registry));
+  const { authClient, client, storage } = context();
+  const { data } = await authClient.post<TokenPair>("/token/", mockCredentials);
+  storage.write(data);
+
+  // Recriar os handlers reproduz uma recarga da página ou do módulo pelo HMR.
+  server.resetHandlers(...createAuthenticationHandlers(registry));
+  assert.equal((await client.get("/users/")).status, 200);
+  assert.equal((await authClient.post("/token/refresh/", { refresh: data.refresh })).status, 200);
+  await assert.rejects(authClient.get("/users/", { headers: { Authorization: "Bearer msw-access-unknown" } }), { status: 401 });
+});
+
 test("concurrent 401 responses share one refresh and retry successfully", async () => {
   const { authClient, client, storage } = context();
   storage.write((await authClient.post<TokenPair>("/token/", mockCredentials)).data);
