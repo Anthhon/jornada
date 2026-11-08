@@ -138,15 +138,17 @@ esteja como enabled em um build de produção.
 | --- | --- |
 | POST /api/token/ | Login e obtenção de tokens |
 | POST /api/token/refresh/ | Renovação do token de acesso |
-| GET /api/users/ | Listagem autenticada na página /users |
+| GET /api/me/ | Nome real e papel exibidos na sidebar |
+| GET /api/users/ | Listagem na seção Admin, disponível para professores |
 
-Login e usuários usam HTTP nos dois modos. Alunos, grupos, habilidades, heróis,
-chefes, perguntas e missões ainda usam dados locais de demonstração, pois seus
-endpoints REST não estão registrados no back-end. Alterações nessas telas não são
+Login e perfil usam HTTP nos dois modos. Professor também é administrador: a
+seção Admin usa `role: "teacher"` informado por `/api/me/`. Alunos, grupos, habilidades, heróis,
+chefes, perguntas e missões ainda usam dados locais de demonstração; a integração
+dessas telas com os endpoints REST existentes está pendente. Alterações nessas telas não são
 persistidas na API, mesmo no modo de conexão direta.
 
-Contas de usuário e registros de aventureiros são entidades distintas; /users
-não substitui o cadastro de alunos.
+Contas de usuário e registros de aventureiros são entidades distintas. O menu
+Aventureiros é a área voltada aos cadastros de alunos.
 
 ## Organização do código
 

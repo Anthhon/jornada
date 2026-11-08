@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Lora:wght@400;500&family=Poppins:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Lora:wght@400;500&family=Pixelify+Sans:wght@500;600&family=Poppins:wght@400;500;600&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -6,6 +6,7 @@
   --font-sans: "Poppins", Arial, sans-serif;
   --font-display: "Cinzel", Georgia, serif;
   --font-reading: "Lora", Georgia, serif;
+  --font-pixel: "Pixelify Sans", monospace;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -87,7 +88,7 @@
   --sidebar-accent: oklch(0.95 0.022 144);
   --sidebar-accent-foreground: oklch(0.43 0.06 144);
   --sidebar-border: oklch(0.74 0.013 98 / 42%);
-  --sidebar-ring: oklch(0.66 0.09 250);
+  --sidebar-ring: oklch(0.5 0.09 250);
   --guild-stone: oklch(0.22 0.009 100);
   --guild-ink: oklch(0.94 0.035 85);
   --guild-gold: oklch(0.78 0.11 85);

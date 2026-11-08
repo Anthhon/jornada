@@ -3,124 +3,59 @@
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Confirm, LoadingState } from "@/features/journey/components/ui";
-import {
-  BookOpen,
-  CalendarDays,
-  Castle,
-  DoorOpen,
-  Flame,
-  Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Scroll,
-  Shield,
-  Skull,
-  Users,
-} from "lucide-react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-
 import { Crest } from "@/features/journey/components/crest";
+import { getCurrentUser } from "@/features/authentication/services/authentication-service";
+import type { CurrentUser } from "@/features/authentication/schemas/current-user";
+import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import { restoreSession, useJornada } from "@/stores/journey-store";
 import { UNAUTHORIZED_EVENT } from "@/lib/api";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Navigation } from "./sidebar-navigation";
+import { ProfileFooter } from "./sidebar-user-menu";
+import type { SidebarCounts } from "./sidebar-config";
+import { SidebarAccessContext } from "./sidebar-access";
 
-const navigation = [
-  { href: "/agenda", label: "Agenda de incursões", icon: CalendarDays },
-  { href: "/dashboard", label: "Salão da Guilda", icon: Castle },
-  { href: "/missions", label: "Missões", icon: Crest },
-  { href: "/students", label: "Aventureiros", icon: Users },
-  { href: "/users", label: "Usuários da API", icon: Users },
-  { href: "/groups", label: "Grupos", icon: Shield },
-  { href: "/heroes", label: "Heróis", icon: Flame },
-  { href: "/skills", label: "Habilidades", icon: BookOpen },
-  { href: "/bosses", label: "Chefes", icon: Skull },
-  { href: "/questions", label: "Perguntas", icon: Scroll },
-] as const;
-
-function Navigation({ collapsed, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
-  const pathname = usePathname();
-
-  return (
-    <nav className="flex flex-col gap-1" aria-label="Navegação da área do professor">
-      {navigation.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || pathname.startsWith(`${href}/`);
-        return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            title={collapsed ? label : undefined}
-            className={cn(
-              "flex h-10 items-center gap-3 rounded-md border-l-2 border-transparent px-3 text-sm text-sidebar-foreground/80 transition-colors duration-150 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-              active && "border-success bg-sidebar-accent font-medium text-sidebar-accent-foreground",
-              collapsed && "justify-center px-0",
-            )}
-          >
-            <Icon className="h-[18px] w-[18px] shrink-0" />
-            {!collapsed && <span>{label}</span>}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
+export type { SidebarCounts } from "./sidebar-config";
 
 function Brand({ collapsed }: { collapsed?: boolean }) {
   return (
-    <div className={cn("flex items-center gap-2.5", collapsed && "justify-center")}>
-      <Crest />
+    <div className={cn("flex min-w-0 items-center gap-2.5 px-1", collapsed && "justify-center px-0")}>
+      <Crest className="h-9 w-9 shrink-0" />
       {!collapsed && (
-        <div className="leading-tight">
+        <div className="min-w-0 leading-tight">
           <div className="font-display text-sm font-semibold">Debuggers &amp; Developers</div>
-          <div className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">D&amp;D</div>
+          <div className="mt-1 text-[0.7rem] uppercase tracking-widest text-sidebar-foreground/75">D&amp;D</div>
         </div>
       )}
     </div>
   );
 }
 
-function FooterEmblem({ collapsed }: { collapsed?: boolean }) {
-  if (collapsed) return <Crest className="mx-auto h-6 w-6 opacity-60" />;
-
-  return (
-    <div className="flex items-center gap-2.5 rounded-md border border-sidebar-border bg-card/60 p-3">
-      <Crest className="h-6 w-6 shrink-0 opacity-70" />
-      <p className="font-reading text-xs italic text-muted-foreground">Cada jornada começa com um passo.</p>
-    </div>
-  );
-}
-
-function ExitButton({ small, onClick }: { small?: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive",
-        small && "justify-center px-0",
-      )}
-      title="Deixar a guilda"
-    >
-      <DoorOpen className="h-[18px] w-[18px]" strokeWidth={1.6} />
-      {!small && "Deixar a guilda"}
-    </button>
-  );
-}
-
-export function TeacherShell({ children }: { children: ReactNode }) {
+export function TeacherShell({ children, counts }: {
+  children: ReactNode;
+  /** Omita para usar os dados locais; passe {} para ocultar os contadores. */
+  counts?: SidebarCounts;
+}) {
   const router = useRouter();
   const session = useJornada((state) => state.session);
   const setSession = useJornada((state) => state.setSession);
-  const ready = useSyncExternalStore(
-    () => () => undefined,
-    () => true,
-    () => false,
-  );
+  const incursions = useJornada((state) => state.incursions);
+  const sessionUsername = session?.username;
+  const ready = useSyncExternalStore(() => () => undefined, () => true, () => false);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
+  const collapseButton = useRef<HTMLButtonElement>(null);
+  const [identity, setIdentity] = useState<{ sessionUsername: string; profile: CurrentUser | null } | null>(null);
+  const { theme, toggleTheme } = useTheme();
+  const profile = identity?.sessionUsername === sessionUsername ? identity?.profile : null;
+  const access = useMemo(() => ({
+    canViewUsers: profile?.role === "teacher",
+    loading: !!sessionUsername && identity?.sessionUsername !== sessionUsername,
+  }), [profile, sessionUsername, identity]);
 
   useEffect(() => {
     restoreSession();
@@ -133,66 +68,90 @@ export function TeacherShell({ children }: { children: ReactNode }) {
     if (ready && session?.role !== "professor") router.replace("/login");
   }, [ready, router, session]);
 
-  if (!ready || session?.role !== "professor") {
-    return <LoadingState label="Abrindo os portões…" />;
-  }
+  useEffect(() => {
+    if (!sessionUsername) return;
+    const controller = new AbortController();
+    getCurrentUser(controller.signal).then((result) => {
+      if (!controller.signal.aborted) setIdentity({ sessionUsername, profile: result });
+    }).catch(() => {
+      if (!controller.signal.aborted) setIdentity({ sessionUsername, profile: null });
+    });
+    return () => controller.abort();
+  }, [sessionUsername]);
 
-  const exit = () => {
-    setSession(null);
-    router.replace("/");
+  useEffect(() => {
+    if (!sessionUsername) return;
+    const toggle = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || !event.ctrlKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== "b") return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select"))) return;
+      event.preventDefault();
+      if (window.matchMedia("(min-width: 768px)").matches) {
+        setCollapsed((value) => !value);
+        requestAnimationFrame(() => collapseButton.current?.focus());
+      }
+      else setMobileOpen((value) => !value);
+    };
+    window.addEventListener("keydown", toggle);
+    return () => window.removeEventListener("keydown", toggle);
+  }, [sessionUsername]);
+
+  if (!ready || session?.role !== "professor") return <LoadingState label="Abrindo os portões…" />;
+
+  const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || session.name.trim() || session.username;
+  const displayRole = profile?.role === "student" ? "Aluno" : "Professor";
+  const resolvedCounts = counts ?? {
+    missions: incursions.length,
+    agenda: incursions.filter((incursion) => incursion.status !== "concluida").length,
   };
+  const exit = () => { setSession(null); router.replace("/"); };
 
   return (
-    <div className="relative z-10 flex min-h-screen">
-      <aside
-        className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col gap-6 border-r border-sidebar-border bg-sidebar p-4 transition-[width] duration-200 md:flex",
-          collapsed ? "w-[76px]" : "w-60",
-        )}
-      >
-        <Brand collapsed={collapsed} />
-        <button
-          type="button"
-          onClick={() => setCollapsed((value) => !value)}
-          className={cn("flex h-8 items-center gap-2 rounded-md px-3 text-xs text-muted-foreground hover:bg-sidebar-accent/60", collapsed && "justify-center px-0")}
-          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-        >
-          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <><PanelLeftClose className="h-4 w-4" /> Recolher</>}
-        </button>
-        <div className="flex-1 overflow-y-auto"><Navigation collapsed={collapsed} /></div>
-        <div className="space-y-3">
-          {!collapsed && <div className="px-3 text-xs text-muted-foreground">Mestre: <span className="text-foreground">{session.name}</span></div>}
-          <ExitButton small={collapsed} onClick={() => setConfirmExit(true)} />
-          <FooterEmblem collapsed={collapsed} />
-        </div>
-      </aside>
+    <SidebarAccessContext.Provider value={access}>
+      <div className="relative z-10 flex min-h-svh">
+        <aside className={cn(
+          "sticky top-0 z-30 hidden h-svh shrink-0 flex-col gap-4 border-r border-sidebar-border bg-sidebar p-3 transition-[width] duration-200 motion-reduce:transition-none md:flex",
+          collapsed ? "w-20" : "w-64",
+        )}>
+          <Brand collapsed={collapsed} />
+          <button
+            ref={collapseButton} type="button" onClick={() => setCollapsed((value) => !value)}
+            className={cn(
+              "flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-sidebar-accent-foreground/40 bg-sidebar-primary px-3 text-xs font-medium text-sidebar-primary-foreground transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+              collapsed && "justify-center px-0",
+            )}
+            aria-label={collapsed ? "Expandir menu" : "Recolher menu"} aria-expanded={!collapsed}
+            aria-controls="teacher-sidebar-navigation" aria-keyshortcuts="Control+B"
+            title={collapsed ? "Expandir menu (Ctrl+B)" : "Recolher menu (Ctrl+B)"}
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <><PanelLeftClose className="h-4 w-4" /> Recolher <kbd aria-hidden="true" className="ml-auto rounded border border-current/30 px-1 py-0.5 text-[0.65rem]">Ctrl B</kbd></>}
+          </button>
+          <div id="teacher-sidebar-navigation" className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-1">
+            <Navigation collapsed={collapsed} counts={resolvedCounts} isAdmin={access.canViewUsers} />
+          </div>
+          <ProfileFooter key={collapsed ? "collapsed" : "expanded"} name={displayName} role={displayRole} collapsed={collapsed} theme={theme} onTheme={toggleTheme} onExit={() => setConfirmExit(true)} />
+        </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-sidebar-border bg-sidebar px-4 py-3 md:hidden">
-          <Brand />
-          <Button variant="ghost" size="icon" aria-label="Abrir menu" onClick={() => setMobileOpen(true)}><Menu /></Button>
-        </header>
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetContent side="left" className="flex w-72 flex-col gap-6 bg-sidebar">
-            <SheetTitle className="sr-only">Menu</SheetTitle>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex items-center justify-between border-b border-sidebar-border bg-sidebar px-4 py-3 md:hidden">
             <Brand />
-            <div className="flex-1"><Navigation onNavigate={() => setMobileOpen(false)} /></div>
-            <ExitButton onClick={() => setConfirmExit(true)} />
-            <FooterEmblem />
-          </SheetContent>
-        </Sheet>
-        <main className="mx-auto w-full max-w-[1600px] flex-1 px-5 py-8 md:px-8 md:py-12 xl:px-10 2xl:px-12">{children}</main>
-      </div>
+            <Button variant="ghost" size="icon" aria-label="Abrir menu" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><Menu /></Button>
+          </header>
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetContent side="left" className="flex w-72 flex-col gap-4 bg-sidebar p-4">
+              <SheetTitle className="sr-only">Menu principal</SheetTitle>
+              <div className="pr-7"><Brand /></div>
+              <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-1">
+                <Navigation counts={resolvedCounts} isAdmin={access.canViewUsers} onNavigate={() => setMobileOpen(false)} />
+              </div>
+              <ProfileFooter name={displayName} role={displayRole} theme={theme} onTheme={toggleTheme} onNavigate={() => setMobileOpen(false)} onExit={() => { setMobileOpen(false); setConfirmExit(true); }} />
+            </SheetContent>
+          </Sheet>
+          <main className="mx-auto w-full max-w-[1600px] flex-1 px-5 py-8 md:px-8 md:py-12 xl:px-10 2xl:px-12">{children}</main>
+        </div>
 
-      <Confirm
-        open={confirmExit}
-        onOpenChange={setConfirmExit}
-        title="Deixar a guilda?"
-        description="Sua sessão será encerrada neste navegador."
-        confirmLabel="Deixar a guilda"
-        destructive
-        onConfirm={exit}
-      />
-    </div>
+        <Confirm open={confirmExit} onOpenChange={setConfirmExit} title="Deixar a guilda?" description="Sua sessão será encerrada neste navegador." confirmLabel="Deixar a guilda" destructive onConfirm={exit} />
+      </div>
+    </SidebarAccessContext.Provider>
   );
 }

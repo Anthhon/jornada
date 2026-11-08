@@ -47,8 +47,8 @@ the HTTP test suite.
 | --- | --- | --- |
 | `POST /api/token/` | authentication | Credentials → access and refresh tokens |
 | `POST /api/token/refresh/` | HTTP infrastructure | Renew access and retry once |
-| `GET /api/me/` | authentication | Current-user name and role |
-| `GET /api/users/` | users | Authenticated listing, displayed at `/users` |
+| `GET /api/me/` | authentication | Real name and role for the sidebar |
+| `GET /api/users/` | users | Admin UI available to teachers (teachers are administrators) |
 
 `lib/api.ts` configures the base URL, timeout, authorization, a shared in-flight
 refresh request, and session expiration notification. Authentication endpoints use
@@ -58,9 +58,12 @@ tokens and the existing UI session. A failed refresh ends that session.
 
 This is browser-side bearer authentication, not an HttpOnly-cookie/BFF setup.
 Next's UI guard is not an authorization boundary: Django must enforce permissions.
-The token endpoint returns no role or profile. The current-user service fetches
-`/api/me/` for the user's name and role. Logout currently removes local
-credentials; backend refresh-token revocation is not implemented.
+The token endpoint returns no role or profile. The sidebar fetches `/api/me/`
+for the user's name and role. A teacher is an administrator in this project:
+Admin uses `role: "teacher"` from this response, without an extra permission
+flag or superuser requirement. API authorization is still enforced by Django.
+Logout currently removes local credentials; backend refresh-token revocation
+is not implemented.
 
 In mock mode, issued access/refresh tokens are registered in the tab's
 `sessionStorage` (`jornada-mock-tokens`) so they remain valid after reloads or HMR.
@@ -75,12 +78,12 @@ enrollment numbers, or membership contracts.
 
 ## Connecting the other screens
 
-Students, groups, skills/spells, heroes, bosses, questions, and missions currently
-have no registered REST endpoints. No hypothetical URLs were added as though
-they were available. To connect each feature:
+Students, groups, skills/spells, heroes, bosses, questions, and missions still use
+local demo state in the UI. Their backend endpoints now exist; verify the current
+routes and serializers before connecting each feature:
 
-1. Define serializers, views, URLs, permissions, validation errors, and pagination
-   in Django. Resolve the existing migration drift before deploying that schema.
+1. Check the Django serializers, views, URLs, permissions, validation errors and
+   pagination against the UI requirements. Verify migrations before deployment.
 2. Define the feature's DTO/schema and map it to its UI model where fields differ
    (for example numeric backend IDs versus current string demo IDs).
 3. Add service methods for the real endpoints, then corresponding MSW handlers
@@ -88,8 +91,8 @@ they were available. To connect each feature:
 4. Replace the feature's direct Zustand mutations and `fakeSave` calls with
    awaited service methods. Show success only after the request completes, show
    backend field errors through React Hook Form, and update/refetch the listing.
-5. Remove that feature's seed initialization and simulated loading. Use actual
-   pending/error states as demonstrated by `features/users/components/users-page.tsx`.
+5. Remove that feature's seed initialization and simulated loading. Handle
+   pending, error, and empty states with the shared UI components.
 
 Complex mission operations also need server commands for stage transitions,
 evaluations, hero assignment, battle turns, and results. Random boss selection,

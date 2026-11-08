@@ -31,7 +31,7 @@ Em desenvolvimento, o conteúdo do e-mail aparece no terminal do Django. Para en
 
 - `POST /api/token/` `{username, password}` → `{access, refresh}`; `POST /api/token/refresh/`.
 - Enviar `Authorization: Bearer <access>`.
-- `GET /api/me/` → `{..., role: "teacher" | "student", student: {...} | null}`.
+- `GET /api/me/` → `{..., role: "teacher" | "student", student: {...} | null}`. No projeto, professor também é administrador; a interface usa `role: "teacher"` para exibir a seção Admin.
 - **Professor/admin** = usuário que não tem registro de aluno (ou é staff): acesso total.
 - **Aluno**: lê o conteúdo do jogo, vê só o **próprio** perfil (`/api/students/`), joga a batalha do **próprio grupo**.
 - Visitante: só leitura pública (conteúdo, placar, estado da batalha).

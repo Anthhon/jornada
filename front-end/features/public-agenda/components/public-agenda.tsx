@@ -10,7 +10,7 @@ import { useState } from "react";
 
 const groupTones = ["bg-accent/60", "bg-info/10", "bg-parchment/50", "bg-secondary/60"];
 
-export function PublicAgenda() {
+export function PublicAgenda({ embedded = false }: { embedded?: boolean }) {
   const { students, teams, incursions } = useJornada();
   const [query, setQuery] = useState("");
   const agenda = publicAgenda(students, teams, incursions);
@@ -18,7 +18,7 @@ export function PublicAgenda() {
   const groups = agenda.groups.map((group, index) => ({ ...group, index, members: group.name.toLocaleLowerCase("pt-BR").includes(search) ? group.members : group.members.filter((member) => `${member.name} ${member.registration}`.toLocaleLowerCase("pt-BR").includes(search)) })).filter((group) => !search || group.members.length > 0);
 
   return (
-    <section id="agenda" className="mx-auto w-full max-w-7xl px-5 py-10 md:px-10 md:py-12">
+    <section id="agenda" className={embedded ? "w-full" : "mx-auto w-full max-w-7xl px-5 py-10 md:px-10 md:py-12"}>
       <PageHeader title="Agenda de incursões" description="Aventureiros, grupos e datas de cada missão." />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div className="relative w-full max-w-sm">
