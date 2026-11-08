@@ -96,6 +96,45 @@
   --guild-shadow: 0 3px 5px oklch(0.1 0 0 / 80%);
 }
 
+:root[data-theme="dark"] {
+  --background: #181b17;
+  --foreground: #f2f0e6;
+  --card: #23271f;
+  --card-foreground: #f2f0e6;
+  --popover: #23271f;
+  --popover-foreground: #f2f0e6;
+  --primary: #c3dfba;
+  --primary-hover: #adcda3;
+  --primary-foreground: #182016;
+  --secondary: #30362b;
+  --secondary-foreground: #f2f0e6;
+  --muted: #30362b;
+  --muted-foreground: #bfc2b2;
+  --accent: #2d3b2a;
+  --accent-foreground: #c3dfba;
+  --destructive: #f7a789;
+  --destructive-foreground: #271c16;
+  --info: #a3c5e3;
+  --info-foreground: #171d22;
+  --success: #b3cf96;
+  --success-foreground: #1b2416;
+  --parchment: #373124;
+  --parchment-foreground: #edddba;
+  --border: #66715b;
+  --border-strong: #919c84;
+  --input: #66715b;
+  --ring: #b3cf96;
+  --sidebar: #1e221b;
+  --sidebar-foreground: #f2f0e6;
+  --sidebar-primary: #c3dfba;
+  --sidebar-primary-foreground: #182016;
+  --sidebar-accent: #2d3b2a;
+  --sidebar-accent-foreground: #c3dfba;
+  --sidebar-border: #58634e;
+  --sidebar-ring: #b3cf96;
+  --guild-paper: #302b20;
+}
+
 * {
   box-sizing: border-box;
   border-color: var(--border);
