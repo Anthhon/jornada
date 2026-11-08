@@ -8,3 +8,11 @@ export async function login(credentials: LoginValues) {
   tokenStorage.write(tokensSchema.parse(data));
 }
 export function logout() { tokenStorage.clear(); }
+
+export async function requestPasswordReset(email: string) {
+  await authClient.post("/password-reset/", { email });
+}
+
+export async function confirmPasswordReset(uid: string, token: string, newPassword: string) {
+  await authClient.post("/password-reset/confirm/", { uid, token, new_password: newPassword });
+}
