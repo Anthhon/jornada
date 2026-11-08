@@ -255,5 +255,8 @@ media/
 *.pyc
 *.db
 *.pid
-migrations/
-__init__.py
+
+
+# Front-end source directories are not Python build artifacts.
+!front-end/lib/
+!front-end/lib/**
