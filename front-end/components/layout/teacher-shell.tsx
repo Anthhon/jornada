@@ -10,7 +10,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 import { restoreSession, useJornada } from "@/stores/journey-store";
 import { UNAUTHORIZED_EVENT } from "@/lib/api";
-import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "@/components/icons/rpg-icons";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Navigation } from "./sidebar-navigation";

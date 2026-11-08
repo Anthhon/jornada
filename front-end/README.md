@@ -19,7 +19,7 @@ MSW durante o desenvolvimento. Os componentes e serviços são os mesmos nos doi
 | Axios | Cliente HTTP, Bearer token e renovação de JWT |
 | Zustand 5 | Estado compartilhado, sessão visual e dados demonstrativos |
 | MSW 3 | Simulação de endpoints HTTP no navegador e nos testes |
-| Lucide React + Sonner | Ícones e notificações |
+| SVGs RPG autorais + Sonner | Ícones pixel art dourados e notificações |
 | ESLint + tsx + Node Test Runner | Análise estática e testes HTTP |
 
 As dependências completas estão em [package.json](./package.json).

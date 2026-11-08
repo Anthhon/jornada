@@ -10,7 +10,7 @@ import { PageHeader, PageState, Scroll } from "@/features/journey/components/ui"
 import { useSimulatedLoad } from "@/hooks/use-simulated-load";
 import { useJornada } from "@/stores/journey-store";
 import type { Hero } from "@/features/heroes";
-import { Pencil, Shield } from "lucide-react";
+import { Pencil, Shield } from "@/components/icons/rpg-icons";
 import { Crest } from "@/features/journey/components/crest";
 import { useState } from "react";
 

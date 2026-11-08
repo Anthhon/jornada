@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { isAxiosError } from "axios";
-import { ArrowLeft, Mail, MailCheck } from "lucide-react";
+import { ArrowLeft, Mail, MailCheck } from "@/components/icons/rpg-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, Scroll, SubmitButton } from "@/features/journey/components/ui";

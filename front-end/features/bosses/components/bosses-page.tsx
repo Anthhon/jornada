@@ -11,7 +11,7 @@ import { useSimulatedLoad } from "@/hooks/use-simulated-load";
 import { cn } from "@/lib/utils";
 import { useJornada } from "@/stores/journey-store";
 import type { Boss } from "@/features/bosses";
-import { Pencil, Plus, Skull } from "lucide-react";
+import { Pencil, Plus, Skull } from "@/components/icons/rpg-icons";
 import { useState } from "react";
 import { toast } from "sonner";
 

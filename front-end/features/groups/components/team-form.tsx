@@ -6,7 +6,7 @@ import { useValidatedForm } from "@/hooks/use-validated-form";
 import { fakeSave } from "@/mocks/latency";
 import { newId, useJornada } from "@/stores/journey-store";
 import type { Team } from "@/features/groups";
-import { Plus, X } from "lucide-react";
+import { Plus, X } from "@/components/icons/rpg-icons";
 import { toast } from "sonner";
 
 export function TeamForm({ initial, onDone }: { initial: Team | null; onDone: () => void }) {

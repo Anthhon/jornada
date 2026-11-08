@@ -6,7 +6,7 @@ import { useSimulatedLoad } from "@/hooks/use-simulated-load";
 import { formatDate } from "@/lib/date-format";
 import { Link } from "@/lib/router-compat";
 import { useJornada } from "@/stores/journey-store";
-import { ArrowRight, BookOpen, Scroll as ScrollIcon, Shield, Skull, Users } from "lucide-react";
+import { ArrowRight, BookOpen, Scroll as ScrollIcon, Shield, Skull, Users } from "@/components/icons/rpg-icons";
 import type { ReactNode } from "react";
 import { Crest } from "@/features/journey/components/crest";
 

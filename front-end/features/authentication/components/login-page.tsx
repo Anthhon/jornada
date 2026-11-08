@@ -10,7 +10,7 @@ import { MOCKING_ENABLED } from "@/lib/api-config";
 import { login } from "../services/authentication-service";
 import { isAxiosError } from "axios";
 import { restoreSession, useJornada } from "@/stores/journey-store";
-import { CalendarDays, KeyRound, User } from "lucide-react";
+import { CalendarDays, KeyRound, User } from "@/components/icons/rpg-icons";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import type { LoginValues } from "../types/login";

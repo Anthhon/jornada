@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { fakeSave } from "@/mocks/latency";
 import { useJornada } from "@/stores/journey-store";
 import type { Incursion, TurnEffect } from "@/features/missions";
-import { ArrowLeft, Check, Flag, Flame, Heart, Lock, Play, ScrollText, Shield, Skull } from "lucide-react";
+import { ArrowLeft, Check, Flag, Flame, Heart, Lock, Play, ScrollText, Shield, Skull } from "@/components/icons/rpg-icons";
 import { Crest } from "@/features/journey/components/crest";
 import { useState } from "react";
 import { toast } from "sonner";

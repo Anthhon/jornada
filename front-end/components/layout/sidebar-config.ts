@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, Castle, Flame, KeyRound, ScrollText, Shield, Skull, Users } from "lucide-react";
+import { BookOpen, CalendarDays, Castle, Flame, KeyRound, ScrollText, Shield, Skull, Users } from "@/components/icons/rpg-icons";
 import type { ComponentType } from "react";
 import { Crest } from "@/features/journey/components/crest";
 

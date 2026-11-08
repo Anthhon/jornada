@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { Skill, SkillType } from "@/features/skills";
-import { Dices, Flame, Gem, Heart, Shield, Sparkles } from "lucide-react";
+import { Dices, Flame, Gem, Heart, Shield, Sparkles } from "@/components/icons/rpg-icons";
 
 const ICON: Record<SkillType, typeof Flame> = { dano: Flame, cura: Heart, escudo: Shield, suporte: Sparkles };
 const LABEL: Record<SkillType, string> = { dano: "Dano", cura: "Cura", escudo: "Escudo", suporte: "Suporte" };

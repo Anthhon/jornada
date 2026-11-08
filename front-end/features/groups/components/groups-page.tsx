@@ -10,7 +10,7 @@ import { useSimulatedLoad } from "@/hooks/use-simulated-load";
 import { teamGrade } from "@/lib/journey/rules";
 import { useJornada } from "@/stores/journey-store";
 import type { Team } from "@/features/groups";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "@/components/icons/rpg-icons";
 import { useState } from "react";
 import { toast } from "sonner";
 

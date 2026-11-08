@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { isCancel } from "axios";
 import Link from "next/link";
-import { KeyRound } from "lucide-react";
+import { KeyRound } from "@/components/icons/rpg-icons";
 import { Button } from "@/components/ui/button";
 import { useSidebarAccess } from "@/components/layout/sidebar-access";
 import { EmptyState, ErrorState, LoadingState, PageHeader, Scroll } from "@/features/journey/components/ui";

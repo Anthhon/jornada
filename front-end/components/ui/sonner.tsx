@@ -1,4 +1,5 @@
 import { Toaster as Sonner } from "sonner";
+import { AlertTriangle, CheckCircle2, Compass, Loader2 } from "@/components/icons/rpg-icons";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
@@ -6,6 +7,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       className="toaster group"
+      icons={{
+        success: <CheckCircle2 />,
+        error: <AlertTriangle />,
+        warning: <AlertTriangle />,
+        info: <Compass />,
+        loading: <Loader2 className="animate-spin motion-reduce:animate-none" />,
+      }}
       toastOptions={{
         classNames: {
           toast:

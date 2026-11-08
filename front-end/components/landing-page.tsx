@@ -9,7 +9,7 @@ import {
   Shield,
   Skull,
   X,
-} from "lucide-react";
+} from "@/components/icons/rpg-icons";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";

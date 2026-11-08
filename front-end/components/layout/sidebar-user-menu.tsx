@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronsUpDown, LogOut, Moon, Sun, UserRound } from "lucide-react";
+import { ChevronsUpDown, LogOut, Moon, Sun, UserRound } from "@/components/icons/rpg-icons";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { Theme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";

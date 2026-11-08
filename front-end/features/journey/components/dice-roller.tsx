@@ -3,7 +3,7 @@ import type { DiceRoll } from "@/features/journey";
 
 import { Button } from "@/components/ui/button";
 import { rollDice } from "@/lib/journey/rules";
-import { Dices } from "lucide-react";
+import { Dices } from "@/components/icons/rpg-icons";
 import { useState } from "react";
 
 export function DiceRoller({ expression, onRoll }: { expression: string; onRoll: (r: DiceRoll) => void }) {

@@ -26,6 +26,14 @@ See [API integration](./API-INTEGRATION.md) for configuration, tests, and remain
 
 ## Sidebar
 
+All interface icons come from `components/icons/rpg-icons.tsx`: inline SVGs on
+a 20×20 pixel grid, with the golden apple's ink, gold, shade and highlight palette.
+They accept SVG props, refs and Tailwind sizing/animation classes. `Crest` wraps
+the shared golden apple; notifications and card ornaments use the same family.
+Empty resource gems use grayscale/opacity instead of color overrides so their
+state remains visible with the fixed sprite palette. Decorative icons are hidden
+from assistive technology; standalone icons can receive an `aria-label`.
+
 `components/layout/teacher-shell.tsx` composes the existing desktop sidebar and
 mobile sheet. Sections, links, badge keys and role visibility rules live in
 `sidebar-config.ts`; `sidebar-navigation.tsx` renders semantic lists, active

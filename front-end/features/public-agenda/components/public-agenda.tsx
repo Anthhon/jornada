@@ -5,7 +5,7 @@ import { PageHeader } from "@/features/journey/components/ui";
 import { formatDate } from "@/lib/date-format";
 import { publicAgenda } from "@/lib/journey/agenda";
 import { useJornada } from "@/stores/journey-store";
-import { CalendarDays, Search } from "lucide-react";
+import { CalendarDays, Search } from "@/components/icons/rpg-icons";
 import { useState } from "react";
 
 const groupTones = ["bg-accent/60", "bg-info/10", "bg-parchment/50", "bg-secondary/60"];
