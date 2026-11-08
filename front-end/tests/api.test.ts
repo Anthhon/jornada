@@ -9,6 +9,7 @@ import { createAuthenticationHandlers } from "../mocks/handlers/authentication";
 import { mockCredentials, mockUser } from "../mocks/fixtures/authentication";
 import { getUsers } from "../features/users/services/users-service";
 import { login } from "../features/authentication/services/authentication-service";
+import { currentUserSchema } from "../features/authentication/schemas/current-user";
 
 const server = setupServer();
 before(() => server.listen({ onUnhandledFrame: "error" }));
@@ -28,10 +29,13 @@ function context() {
   return { ...clients, storage, expired: () => expired };
 }
 
-test("login and protected users use the Django HTTP contract", async () => {
+test("login, profile and protected users use the Django HTTP contract", async () => {
   const { authClient, client, storage } = context();
   const { data } = await authClient.post<TokenPair>("/token/", mockCredentials);
   storage.write(data);
+  const profile = currentUserSchema.parse((await client.get("/me/")).data);
+  assert.equal(`${profile.first_name} ${profile.last_name}`, "Helena Duarte");
+  assert.equal(profile.role, "teacher");
   assert.deepEqual((await client.get("/users/")).data, [mockUser]);
 });
 
@@ -57,9 +61,10 @@ test("mock sessions survive reloading handlers and still reject unknown tokens",
 
   // Recriar os handlers reproduz uma recarga da página ou do módulo pelo HMR.
   server.resetHandlers(...createAuthenticationHandlers(registry));
+  assert.equal((await client.get("/me/")).data.role, "teacher");
   assert.equal((await client.get("/users/")).status, 200);
   assert.equal((await authClient.post("/token/refresh/", { refresh: data.refresh })).status, 200);
-  await assert.rejects(authClient.get("/users/", { headers: { Authorization: "Bearer msw-access-unknown" } }), { status: 401 });
+  await assert.rejects(authClient.get("/me/", { headers: { Authorization: "Bearer msw-access-unknown" } }), { status: 401 });
 });
 
 test("concurrent 401 responses share one refresh and retry successfully", async () => {

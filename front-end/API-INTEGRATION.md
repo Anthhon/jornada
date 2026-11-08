@@ -47,6 +47,7 @@ the HTTP test suite.
 | --- | --- | --- |
 | `POST /api/token/` | authentication | Credentials → access and refresh tokens |
 | `POST /api/token/refresh/` | HTTP infrastructure | Renew access and retry once |
+| `GET /api/me/` | authentication | Current-user name and role |
 | `GET /api/users/` | users | Authenticated listing, displayed at `/users` |
 
 `lib/api.ts` configures the base URL, timeout, authorization, a shared in-flight
@@ -57,10 +58,9 @@ tokens and the existing UI session. A failed refresh ends that session.
 
 This is browser-side bearer authentication, not an HttpOnly-cookie/BFF setup.
 Next's UI guard is not an authorization boundary: Django must enforce permissions.
-The current token endpoint returns no role or profile; the existing professor
-label is UI metadata, not a verified claim. A `/me/` endpoint with explicit roles
-is needed before introducing different access levels. Logout currently removes
-local credentials; backend refresh-token revocation is not implemented.
+The token endpoint returns no role or profile. The current-user service fetches
+`/api/me/` for the user's name and role. Logout currently removes local
+credentials; backend refresh-token revocation is not implemented.
 
 In mock mode, issued access/refresh tokens are registered in the tab's
 `sessionStorage` (`jornada-mock-tokens`) so they remain valid after reloads or HMR.

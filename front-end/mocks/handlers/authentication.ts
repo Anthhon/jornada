@@ -44,6 +44,13 @@ export function createAuthenticationHandlers(storage: MockTokenStorage | undefin
       }
       return HttpResponse.json({ access: issueAccess() });
     }),
+    http.get(`${API_BASE_URL}/me/`, ({ request }) => {
+      const access = request.headers.get("authorization")?.replace(/^Bearer /, "");
+      if (!access || !accessTokens.has(access)) {
+        return HttpResponse.json({ detail: "Authentication credentials were not provided or are invalid." }, { status: 401 });
+      }
+      return HttpResponse.json({ ...mockUser, role: "teacher", student: null });
+    }),
     http.get(`${API_BASE_URL}/users/`, ({ request }) => {
       const access = request.headers.get("authorization")?.replace(/^Bearer /, "");
       if (!access || !accessTokens.has(access)) {
