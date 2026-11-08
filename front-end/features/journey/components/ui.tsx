@@ -129,10 +129,10 @@ export function HpBar({ hp, max }: { hp: number; max: number }) {
 
 /* ---------- Estados ---------- */
 
-export function LoadingState({ label = "Consultando os pergaminhos…" }: { label?: string }) {
+export function LoadingState({ label = "Consultando os pergaminhos…", fullScreen = false }: { label?: string; fullScreen?: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-      <Loader2 className="h-6 w-6 animate-spin" />
+    <div role="status" aria-live="polite" className={cn("flex w-full flex-1 flex-col items-center justify-center gap-3 px-4 py-8 text-center text-muted-foreground", fullScreen ? "min-h-svh" : "min-h-48")}>
+      <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
       <p className="font-reading">{label}</p>
     </div>
   );

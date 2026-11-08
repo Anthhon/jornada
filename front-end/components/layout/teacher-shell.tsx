@@ -96,7 +96,7 @@ export function TeacherShell({ children, counts }: {
     return () => window.removeEventListener("keydown", toggle);
   }, [sessionUsername]);
 
-  if (!ready || session?.role !== "professor") return <LoadingState label="Abrindo os portões…" />;
+  if (!ready || session?.role !== "professor") return <LoadingState fullScreen label="Abrindo os portões…" />;
 
   const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || session.name.trim() || session.username;
   const displayRole = profile?.role === "student" ? "Aluno" : "Professor";
@@ -147,7 +147,7 @@ export function TeacherShell({ children, counts }: {
               <ProfileFooter name={displayName} role={displayRole} theme={theme} onTheme={toggleTheme} onNavigate={() => setMobileOpen(false)} onExit={() => { setMobileOpen(false); setConfirmExit(true); }} />
             </SheetContent>
           </Sheet>
-          <main className="mx-auto w-full max-w-[1600px] flex-1 px-5 py-8 md:px-8 md:py-12 xl:px-10 2xl:px-12">{children}</main>
+          <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-5 py-8 md:px-8 md:py-12 xl:px-10 2xl:px-12">{children}</main>
         </div>
 
         <Confirm open={confirmExit} onOpenChange={setConfirmExit} title="Deixar a guilda?" description="Sua sessão será encerrada neste navegador." confirmLabel="Deixar a guilda" destructive onConfirm={exit} />
