@@ -17,6 +17,18 @@ Produção (variáveis de ambiente): `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=false`,
 
 ## Autenticação e papéis
 
+### Recuperação de senha
+
+- `POST /api/password-reset/` com `{ "email": "voce@exemplo.com" }`: solicita o link. A resposta é a mesma para e-mails cadastrados ou desconhecidos. Limite: 5 solicitações por hora por IP.
+- `POST /api/password-reset/confirm/` com `{ "uid": "...", "token": "...", "new_password": "..." }`: salva a senha após validar o link e as regras de senha do Django. Limite: 20 tentativas por hora por IP.
+- Os links expiram em uma hora e deixam de funcionar após o uso. Links inválidos retornam `400` com `code: "invalid_token"`.
+- No front, `/forgot-password` solicita o e-mail e `/reset-password/<uid>/<token>` recebe o link.
+- A conta deve ter e-mail cadastrado, estar ativa e possuir uma senha utilizável.
+
+Em desenvolvimento, o conteúdo do e-mail aparece no terminal do Django. Para envio real, configure `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` e `DEFAULT_FROM_EMAIL`. Configure também `FRONTEND_URL` com a origem do front (padrão: `http://localhost:3000`).
+
+### Login e permissões
+
 - `POST /api/token/` `{username, password}` → `{access, refresh}`; `POST /api/token/refresh/`.
 - Enviar `Authorization: Bearer <access>`.
 - `GET /api/me/` → `{..., role: "teacher" | "student", student: {...} | null}`.
