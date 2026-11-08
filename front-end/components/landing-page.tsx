@@ -68,18 +68,18 @@ export function PublicHeader() {
           onClick={() => setOpen(false)}
         />
         <aside className="guild-menu-panel absolute inset-y-0 left-0 flex w-72 max-w-full flex-col border-r border-guild-gold bg-guild-stone p-6 text-guild-ink shadow-2xl">
-          <div className="absolute left-6 right-6 top-4 flex h-10 items-center justify-center" aria-label="Debuggers e Developers">
-            <span className="font-display text-sm tracking-wide text-guild-gold">Debuggers &amp; Developers</span>
+          <div className="flex min-h-10 items-center justify-between gap-2">
+            <span className="min-w-0 font-display text-sm leading-tight tracking-wide text-guild-gold">Debuggers &amp; Developers</span>
+            <button
+              type="button"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-guild-ink transition-colors hover:text-guild-gold"
+              aria-label="Fechar menu"
+              onClick={() => setOpen(false)}
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            type="button"
-            className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-guild-green"
-            aria-label="Fechar menu"
-            onClick={() => setOpen(false)}
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <nav className="mt-14 flex flex-col gap-2" aria-label="Menu público">
+          <nav className="mt-6 flex flex-col gap-2" aria-label="Menu público">
             <Link href="/" className="flex h-11 items-center gap-3 rounded-md px-3 hover:bg-guild-green" onClick={() => setOpen(false)}>
               <Castle className="h-4 w-4" /> Início
             </Link>
