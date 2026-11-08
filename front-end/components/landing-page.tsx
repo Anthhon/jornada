@@ -8,7 +8,6 @@ import {
   Search,
   Shield,
   Skull,
-  Swords,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -16,6 +15,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { groups, missions } from "@/mocks/landing-agenda";
+import { Crest } from "@/features/journey/components/crest";
 
 const groupTones = [
   "bg-accent/60",
@@ -84,7 +84,7 @@ export function PublicHeader() {
               <Castle className="h-4 w-4" /> Início
             </Link>
             <Link href="/login" className="flex h-11 items-center gap-3 rounded-md px-3 hover:bg-guild-green" onClick={() => setOpen(false)}>
-              <Swords className="h-4 w-4" /> Área do professor
+              <Crest className="h-4 w-4" /> Área do professor
             </Link>
             <a href="#agenda" className="flex h-11 items-center gap-3 rounded-md px-3 hover:bg-guild-green" onClick={() => setOpen(false)}>
               <CalendarDays className="h-4 w-4" /> Agenda de incursões
@@ -247,7 +247,7 @@ export function LandingPage() {
           <div className="guild-hero-content relative z-10 mx-auto flex max-w-3xl flex-col items-center px-5 text-center">
             <div className="mb-5 flex items-center gap-4 text-guild-gold">
               <span className="h-px w-12 bg-guild-gold/60" />
-              <Swords className="h-7 w-7" />
+              <Crest className="h-7 w-7" />
               <span className="h-px w-12 bg-guild-gold/60" />
             </div>
             <p className="mb-4 font-display text-xs uppercase tracking-[0.24em] text-guild-gold">

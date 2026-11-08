@@ -10,7 +10,8 @@ import { PageHeader, PageState, Scroll } from "@/features/journey/components/ui"
 import { useSimulatedLoad } from "@/hooks/use-simulated-load";
 import { useJornada } from "@/stores/journey-store";
 import type { Hero } from "@/features/heroes";
-import { Pencil, Shield, Swords } from "lucide-react";
+import { Pencil, Shield } from "lucide-react";
+import { Crest } from "@/features/journey/components/crest";
 import { useState } from "react";
 
 
@@ -38,7 +39,7 @@ function Herois() {
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-success/60 bg-accent">
-                  {h.role === "Ataque" ? <Swords className="h-5 w-5 text-accent-foreground" /> : <Shield className="h-5 w-5 text-accent-foreground" />}
+                  {h.role === "Ataque" ? <Crest className="h-5 w-5" /> : <Shield className="h-5 w-5 text-accent-foreground" />}
                 </div>
                 <div>
                   <h3 className="text-xl leading-tight">{h.name}</h3>

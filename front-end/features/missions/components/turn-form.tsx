@@ -7,7 +7,7 @@ import { presentationGrade } from "@/lib/journey/rules";
 import { fakeSave } from "@/mocks/latency";
 import { useJornada } from "@/stores/journey-store";
 import type { Incursion, TurnEffect } from "@/features/missions";
-import { Swords } from "lucide-react";
+import { Crest } from "@/features/journey/components/crest";
 import { toast } from "sonner";
 import { EFFECT_LABEL } from "../constants/mission-details-page";
 
@@ -94,7 +94,7 @@ export function TurnForm({ inc }: { inc: Incursion }) {
             </select>
           </Field>
         </div>
-        <SubmitButton loading={loading}><Swords /> Registrar turno</SubmitButton>
+        <SubmitButton loading={loading}><Crest className="h-4 w-4" /> Registrar turno</SubmitButton>
       </form>
     </Scroll>
   );

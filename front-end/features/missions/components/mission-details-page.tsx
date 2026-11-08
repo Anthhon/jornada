@@ -19,7 +19,8 @@ import { cn } from "@/lib/utils";
 import { fakeSave } from "@/mocks/latency";
 import { useJornada } from "@/stores/journey-store";
 import type { Incursion, TurnEffect } from "@/features/missions";
-import { ArrowLeft, Check, Flag, Flame, Heart, Lock, Play, ScrollText, Shield, Skull, Swords } from "lucide-react";
+import { ArrowLeft, Check, Flag, Flame, Heart, Lock, Play, ScrollText, Shield, Skull } from "lucide-react";
+import { Crest } from "@/features/journey/components/crest";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -99,7 +100,7 @@ function Phases({ inc }: { inc: Incursion }) {
           <div className="absolute left-[12%] right-[12%] top-6 border-t-2 border-dashed border-border-strong/40" aria-hidden />
           {inc.stages.map((s) => {
             const isLocked = locked(s.level);
-            const Icon = s.level === 4 ? Skull : s.status === "concluida" ? Check : isLocked ? Lock : Swords;
+            const Icon = s.level === 4 ? Skull : s.status === "concluida" ? Check : isLocked ? Lock : Crest;
             return (
               <div key={s.level} className="relative z-10 flex w-1/4 flex-col items-center text-center">
                 <div className={cn(
@@ -108,7 +109,7 @@ function Phases({ inc }: { inc: Incursion }) {
                   s.status === "andamento" && "border-info text-info ring-4 ring-info/25",
                   s.status === "aguardando" && (isLocked ? "border-border-strong/30 text-muted-foreground" : "border-border-strong text-foreground"),
                 )}>
-                  {isLocked && s.level === 4 ? <Lock className="h-5 w-5" /> : <Icon className="h-5 w-5" strokeWidth={1.6} />}
+                  {isLocked && s.level === 4 ? <Lock className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
                 </div>
                 <p className="mt-2 font-display text-xs font-semibold uppercase tracking-wider">Fase {s.level}</p>
                 <p className="font-reading text-xs text-muted-foreground">{s.name}</p>
@@ -182,7 +183,7 @@ function Groups({ inc }: { inc: Incursion }) {
                   ))}
                 </select>
               </Field>
-              {hero && <p className="text-xs text-muted-foreground">{hero.role === "Ataque" ? <Swords className="mr-1 inline h-3 w-3" /> : <Shield className="mr-1 inline h-3 w-3" />}{hero.role}</p>}
+              {hero && <p className="text-xs text-muted-foreground">{hero.role === "Ataque" ? <Crest className="mr-1 inline h-3 w-3" /> : <Shield className="mr-1 inline h-3 w-3" />}{hero.role}</p>}
               <div className="flex items-end justify-between border-t border-border pt-3">
                 <div>
                   <p className="text-xs uppercase tracking-widest text-muted-foreground">Nota</p>

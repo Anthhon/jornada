@@ -6,11 +6,13 @@ import { useSimulatedLoad } from "@/hooks/use-simulated-load";
 import { formatDate } from "@/lib/date-format";
 import { Link } from "@/lib/router-compat";
 import { useJornada } from "@/stores/journey-store";
-import { ArrowRight, BookOpen, Scroll as ScrollIcon, Shield, Skull, Swords, Users } from "lucide-react";
+import { ArrowRight, BookOpen, Scroll as ScrollIcon, Shield, Skull, Users } from "lucide-react";
+import type { ReactNode } from "react";
+import { Crest } from "@/features/journey/components/crest";
 
 
 
-function Stat({ label, value, icon: Icon }: { label: string; value: number; icon: typeof Users }) {
+function Stat({ label, value, icon }: { label: string; value: number; icon: ReactNode }) {
   return (
     <Scroll>
       <div className="flex items-start justify-between">
@@ -18,7 +20,7 @@ function Stat({ label, value, icon: Icon }: { label: string; value: number; icon
           <p className="text-xs uppercase tracking-widest text-muted-foreground">{label}</p>
           <p className="mt-2 font-display text-4xl font-semibold">{value}</p>
         </div>
-        <Icon className="h-5 w-5 text-accent-foreground" strokeWidth={1.5} />
+        <div className="text-accent-foreground">{icon}</div>
       </div>
     </Scroll>
   );
@@ -41,9 +43,9 @@ function Salao() {
     <PageState status={status} retry={retry}>
       <PageHeader title="Salão da Guilda" description={`Bem-vinda de volta, ${session?.name}. Aqui está o estado das jornadas.`} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Stat label="Aventureiros" value={students.length} icon={Users} />
-        <Stat label="Grupos" value={teams.length} icon={Shield} />
-        <Stat label="Missões" value={incursions.length} icon={Swords} />
+        <Stat label="Aventureiros" value={students.length} icon={<Users className="h-5 w-5" strokeWidth={1.5} />} />
+        <Stat label="Grupos" value={teams.length} icon={<Shield className="h-5 w-5" strokeWidth={1.5} />} />
+        <Stat label="Missões" value={incursions.length} icon={<Crest className="h-5 w-5" />} />
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">

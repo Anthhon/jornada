@@ -15,7 +15,6 @@ import {
   Scroll,
   Shield,
   Skull,
-  Swords,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -30,7 +29,7 @@ import { UNAUTHORIZED_EVENT } from "@/lib/api";
 const navigation = [
   { href: "/agenda", label: "Agenda de incursões", icon: CalendarDays },
   { href: "/dashboard", label: "Salão da Guilda", icon: Castle },
-  { href: "/missions", label: "Missões", icon: Swords },
+  { href: "/missions", label: "Missões", icon: Crest },
   { href: "/students", label: "Aventureiros", icon: Users },
   { href: "/users", label: "Usuários da API", icon: Users },
   { href: "/groups", label: "Grupos", icon: Shield },
@@ -59,7 +58,7 @@ function Navigation({ collapsed, onNavigate }: { collapsed?: boolean; onNavigate
               collapsed && "justify-center px-0",
             )}
           >
-            <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.6} />
+            <Icon className="h-[18px] w-[18px] shrink-0" />
             {!collapsed && <span>{label}</span>}
           </Link>
         );
@@ -75,7 +74,7 @@ function Brand({ collapsed }: { collapsed?: boolean }) {
       {!collapsed && (
         <div className="leading-tight">
           <div className="font-display text-sm font-semibold">Debuggers &amp; Developers</div>
-          <div className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">Guilda das incursões</div>
+          <div className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">D&amp;D</div>
         </div>
       )}
     </div>
