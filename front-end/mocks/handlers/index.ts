@@ -1,2 +1,4 @@
 import { createAuthenticationHandlers } from "./authentication";
-export const handlers = createAuthenticationHandlers();
+import { agendaHandlers } from "./agenda";
+import { catalogHandlers } from "./catalog";
+export const handlers = [...createAuthenticationHandlers(), ...agendaHandlers, ...catalogHandlers];
