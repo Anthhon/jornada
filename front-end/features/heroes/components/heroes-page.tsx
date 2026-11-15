@@ -1,16 +1,19 @@
 "use client";
 
 import { HeroForm } from "./hero-form";
+import { removeHero } from "@/lib/catalog-mutations";
+import { newId } from "@/stores/journey-store";
+import { toast } from "sonner";
 
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SkillCard } from "@/features/journey/components/skill-card";
-import { PageHeader, PageState, Scroll } from "@/features/journey/components/ui";
-import { useSimulatedLoad } from "@/hooks/use-simulated-load";
+import { Confirm, EmptyState, PageHeader, PageState, Scroll } from "@/features/journey/components/ui";
+import { useCatalogLoad } from "@/hooks/use-catalog-load";
 import { useJornada } from "@/stores/journey-store";
 import type { Hero } from "@/features/heroes";
-import { Pencil, Shield } from "@/components/icons/rpg-icons";
+import { Pencil, Plus, Shield, Trash2 } from "@/components/icons/rpg-icons";
 import { Crest } from "@/features/journey/components/crest";
 import { useState } from "react";
 
@@ -26,13 +29,15 @@ function Attr({ label, value }: { label: string; value: number }) {
 }
 
 function Herois() {
-  const { status, retry } = useSimulatedLoad();
+  const { status, retry } = useCatalogLoad();
   const { heroes, skills } = useJornada();
   const [editing, setEditing] = useState<Hero | null>(null);
+  const [deleting, setDeleting] = useState<Hero | null>(null);
 
   return (
     <PageState status={status} retry={retry}>
-      <PageHeader title="Heróis" description="Cada grupo escolhe um herói por missão. Ataque fere o chefe; suporte protege a Aliança." />
+      <PageHeader title="Heróis" description="Cada grupo escolhe um herói por missão. Ataque fere o chefe; suporte protege a Aliança." action={<Button onClick={() => setEditing({ id: newId("h"), name: "", heroClass: "", role: "Ataque", description: "", passive: "", attributes: { forca: 0, sabedoria: 0, carisma: 0 }, skillIds: [] })}><Plus /> Novo herói</Button>} />
+      {heroes.length === 0 && <EmptyState title="Nenhum herói cadastrado" hint="Cadastre o primeiro herói." />}
       <div className="grid gap-6 md:grid-cols-2">
         {heroes.map((h) => (
           <Scroll key={h.id} className="flex flex-col gap-4 p-6">
@@ -46,7 +51,7 @@ function Herois() {
                   <p className="text-xs uppercase tracking-widest text-muted-foreground">{h.heroClass} · {h.role}</p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" aria-label={`Editar ${h.name}`} onClick={() => setEditing(h)}><Pencil /></Button>
+              <div className="flex"><Button variant="ghost" size="icon" aria-label={`Editar ${h.name}`} onClick={() => setEditing(h)}><Pencil /></Button><Button variant="ghost" size="icon" aria-label={`Excluir ${h.name}`} onClick={() => setDeleting(h)}><Trash2 /></Button></div>
             </div>
             <p className="font-reading text-sm leading-relaxed">{h.description}</p>
             <div className="grid grid-cols-3 rounded-md border border-border bg-secondary/40 py-2">
@@ -71,6 +76,7 @@ function Herois() {
           {editing && <HeroForm key={editing.id} hero={editing} onDone={() => setEditing(null)} />}
         </SheetContent>
       </Sheet>
+      <Confirm open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)} title="Excluir herói?" description={deleting?.name ?? ""} confirmLabel="Excluir" destructive onConfirm={async () => { if (deleting && await removeHero(deleting.id)) { toast.success("Herói removido."); setDeleting(null); } }} />
     </PageState>
   );
 }

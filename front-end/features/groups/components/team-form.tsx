@@ -3,18 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, SubmitButton, selectClass } from "@/features/journey/components/ui";
 import { useValidatedForm } from "@/hooks/use-validated-form";
-import { fakeSave } from "@/mocks/latency";
+import { upsertTeam } from "@/lib/catalog-mutations";
 import { newId, useJornada } from "@/stores/journey-store";
 import type { Team } from "@/features/groups";
 import { Plus, X } from "@/components/icons/rpg-icons";
 import { toast } from "sonner";
 
 export function TeamForm({ initial, onDone }: { initial: Team | null; onDone: () => void }) {
-  const { teams, students, upsertTeam } = useJornada();
-  const form = useValidatedForm({ name: initial?.name ?? "", members: (initial?.memberIds ?? []) as string[], extra: (Object.fromEntries(Object.entries(initial?.extraPoints ?? {}).map(([k, v]) => [k, String(v)]))) as Record<string, string>, pick: "" });
+  const { teams, students } = useJornada();
+  const form = useValidatedForm({ name: initial?.name ?? "", letter: initial?.letter ?? "", members: (initial?.memberIds ?? []) as string[], extra: (Object.fromEntries(Object.entries(initial?.extraPoints ?? {}).map(([k, v]) => [k, String(v)]))) as Record<string, string>, pick: "" });
   const { handleSubmit, formState: { isSubmitting: loading }, validationErrors: err, setValidationErrors: setErr } = form;
   const name = form.watch("name");
   const setName = (next: typeof name) => form.setValue("name", next, { shouldDirty: true });
+  const letter = form.watch("letter");
   const members = form.watch("members");
   const setMembers = (next: typeof members) => form.setValue("members", next, { shouldDirty: true });
   const extra = form.watch("extra");
@@ -31,8 +32,7 @@ export function TeamForm({ initial, onDone }: { initial: Team | null; onDone: ()
     members.forEach((m) => { const v = Number(extra[m] || 0); if (!Number.isFinite(v) || v < 0 || v > 2) x[m] = "Entre 0 e 2."; });
     setErr(x);
     if (Object.keys(x).length) return;
-    await fakeSave();
-    upsertTeam({ id: initial?.id ?? newId("t"), name: name.trim(), memberIds: members, extraPoints: Object.fromEntries(members.map((m) => [m, Number(extra[m] || 0)]).filter(([, v]) => v)) });
+    if (!await upsertTeam({ id: initial?.id ?? newId("t"), name: name.trim(), letter: letter.trim().toLocaleUpperCase("pt-BR") || undefined, memberIds: members, extraPoints: Object.fromEntries(members.map((m) => [m, Number(extra[m] || 0)]).filter(([, v]) => v)) })) return;
     toast.success("Grupo salvo.");
     onDone();
   }
@@ -40,6 +40,7 @@ export function TeamForm({ initial, onDone }: { initial: Team | null; onDone: ()
   return (
     <form onSubmit={handleSubmit(submit)} className="mt-6 space-y-5" noValidate>
       <Field label="Nome" error={err["name"]}><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <Field label="Letra (opcional)"><Input aria-label="Letra da equipe (opcional)" maxLength={1} value={letter} onChange={(e) => form.setValue("letter", e.target.value, { shouldDirty: true })} /></Field>
       <div className="space-y-2">
         <p className="text-sm font-medium">Membros</p>
         <div className="flex gap-2">

@@ -2,15 +2,15 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, SubmitButton } from "@/features/journey/components/ui";
+import { Field, SubmitButton, selectClass } from "@/features/journey/components/ui";
 import { useValidatedForm } from "@/hooks/use-validated-form";
-import { fakeSave } from "@/mocks/latency";
+import { upsertHero } from "@/lib/catalog-mutations";
 import { useJornada } from "@/stores/journey-store";
 import type { Hero } from "@/features/heroes";
 import { toast } from "sonner";
 
 export function HeroForm({ hero, onDone }: { hero: Hero; onDone: () => void }) {
-  const { skills, upsertHero } = useJornada();
+  const { skills } = useJornada();
   const form = useValidatedForm({ f: { ...hero, attrs: { forca: String(hero.attributes.forca), sabedoria: String(hero.attributes.sabedoria), carisma: String(hero.attributes.carisma) } } });
   const { handleSubmit, formState: { isSubmitting: loading }, validationErrors: err, setValidationErrors: setErr } = form;
   const f = form.watch("f");
@@ -19,15 +19,15 @@ export function HeroForm({ hero, onDone }: { hero: Hero; onDone: () => void }) {
   async function submit() {
     const x: Record<string, string> = {};
     if (!f.name.trim()) x["name"] = "Informe o nome.";
+    if (!f.heroClass.trim()) x["heroClass"] = "Informe a classe.";
     if (!f.description.trim()) x["description"] = "Informe a descrição.";
     (["forca", "sabedoria", "carisma"] as const).forEach((k) => { const v = Number(f.attrs[k]); if (!Number.isInteger(v) || v < 0 || v > 5) x[k] = "0 a 5"; });
     setErr(x);
     if (Object.keys(x).length) return;
-    await fakeSave();
-    upsertHero({
-      ...hero, name: f.name.trim(), description: f.description.trim(), passive: f.passive, passiveReview: f.passive.includes("[revisar]"), skillIds: f.skillIds,
+    if (!await upsertHero({
+      ...hero, name: f.name.trim(), heroClass: f.heroClass.trim(), role: f.role, description: f.description.trim(), passive: f.passive, passiveReview: f.passive.includes("[revisar]"), skillIds: f.skillIds,
       attributes: { forca: Number(f.attrs.forca), sabedoria: Number(f.attrs.sabedoria), carisma: Number(f.attrs.carisma) }
-    });
+    })) return;
     toast.success("Ficha do herói atualizada.");
     onDone();
   }
@@ -35,6 +35,8 @@ export function HeroForm({ hero, onDone }: { hero: Hero; onDone: () => void }) {
   return (
     <form onSubmit={handleSubmit(submit)} className="mt-6 space-y-4" noValidate>
       <Field label="Nome" error={err["name"]}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+      <Field label="Classe" error={err["heroClass"]}><Input value={f.heroClass} onChange={(e) => setF({ ...f, heroClass: e.target.value })} /></Field>
+      <Field label="Função"><select aria-label="Função do herói" className={selectClass} value={f.role} onChange={(e) => setF({ ...f, role: e.target.value as Hero["role"] })}><option>Ataque</option><option>Suporte</option></select></Field>
       <Field label="Descrição" error={err["description"]}><Textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
       <Field label="Passiva"><Textarea rows={2} value={f.passive} onChange={(e) => setF({ ...f, passive: e.target.value })} /></Field>
       <div className="grid grid-cols-3 gap-3">

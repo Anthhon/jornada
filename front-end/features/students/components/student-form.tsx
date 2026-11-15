@@ -3,13 +3,13 @@ import { Input } from "@/components/ui/input";
 import { Field, SubmitButton } from "@/features/journey/components/ui";
 import { useValidatedForm } from "@/hooks/use-validated-form";
 import { validateRegistration } from "@/lib/journey/students";
-import { fakeSave } from "@/mocks/latency";
+import { upsertStudent } from "@/lib/catalog-mutations";
 import { newId, useJornada } from "@/stores/journey-store";
 import type { Student } from "@/features/students";
 import { toast } from "sonner";
 
 export function StudentForm({ initial, onDone }: { initial: Student | null; onDone: () => void }) {
-  const { students, upsertStudent } = useJornada();
+  const { students } = useJornada();
   const form = useValidatedForm({ f: { name: initial?.name ?? "", registration: initial?.registration ?? "" } });
   const { handleSubmit, formState: { isSubmitting: loading }, validationErrors: err, setValidationErrors: setErr } = form;
   const f = form.watch("f");
@@ -22,8 +22,7 @@ export function StudentForm({ initial, onDone }: { initial: Student | null; onDo
     if (registrationError) x["registration"] = registrationError;
     setErr(x);
     if (Object.keys(x).length) return;
-    await fakeSave();
-    upsertStudent({ id: initial?.id ?? newId("s"), name: f.name.trim(), registration: f.registration.trim() });
+    if (!await upsertStudent({ id: initial?.id ?? newId("s"), name: f.name.trim(), registration: f.registration.trim() })) return;
     toast.success("Aventureiro salvo.");
     onDone();
   }

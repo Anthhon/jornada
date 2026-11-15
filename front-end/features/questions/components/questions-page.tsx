@@ -1,12 +1,13 @@
 "use client";
 
 import { QuestionForm } from "./question-form";
+import { removeQuestion } from "@/lib/catalog-mutations";
 
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Confirm, EmptyState, PageHeader, PageState, Scroll } from "@/features/journey/components/ui";
-import { useSimulatedLoad } from "@/hooks/use-simulated-load";
+import { useCatalogLoad } from "@/hooks/use-catalog-load";
 import { cn } from "@/lib/utils";
 import { useJornada } from "@/stores/journey-store";
 import type { Question } from "@/features/questions";
@@ -17,8 +18,8 @@ import { toast } from "sonner";
 
 
 function Perguntas() {
-  const { status, retry } = useSimulatedLoad();
-  const { questions, removeQuestion } = useJornada();
+  const { status, retry } = useCatalogLoad();
+  const { questions } = useJornada();
   const [editing, setEditing] = useState<Question | "new" | null>(null);
   const [del, setDel] = useState<Question | null>(null);
 
@@ -32,7 +33,7 @@ function Perguntas() {
           {questions.map((q, n) => (
             <Scroll key={q.id}>
               <div className="flex items-start justify-between gap-3">
-                <p className="font-reading text-base"><span className="mr-2 font-display text-sm text-muted-foreground">{n + 1}.</span>{q.statement}</p>
+                <div><p className="font-reading text-base"><span className="mr-2 font-display text-sm text-muted-foreground">{n + 1}.</span>{q.statement}</p>{q.language && <p className="mt-1 text-xs text-muted-foreground">{q.language}</p>}</div>
                 <div className="flex shrink-0">
                   <Button variant="ghost" size="icon" aria-label="Editar" onClick={() => setEditing(q)}><Pencil /></Button>
                   <Button variant="ghost" size="icon" aria-label="Excluir" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setDel(q)}><Trash2 /></Button>
@@ -59,7 +60,7 @@ function Perguntas() {
         </SheetContent>
       </Sheet>
       <Confirm open={!!del} onOpenChange={(o) => !o && setDel(null)} title="Excluir pergunta?" description="Ela deixará de aparecer nas próximas missões." confirmLabel="Excluir" destructive
-        onConfirm={() => { if (del) { removeQuestion(del.id); toast.success("Pergunta removida."); } setDel(null); }} />
+        onConfirm={async () => { if (del && await removeQuestion(del.id)) { toast.success("Pergunta removida."); setDel(null); } }} />
     </PageState>
   );
 }

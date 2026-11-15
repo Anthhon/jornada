@@ -6,13 +6,13 @@ import { SKILL_TYPE_LABEL } from "@/features/journey/components/skill-card";
 import { Field, SubmitButton, selectClass } from "@/features/journey/components/ui";
 import { useValidatedForm } from "@/hooks/use-validated-form";
 import { isValidDice } from "@/lib/journey/rules";
-import { fakeSave } from "@/mocks/latency";
-import { newId, useJornada } from "@/stores/journey-store";
+import { upsertSkill } from "@/lib/catalog-mutations";
+import { newId } from "@/stores/journey-store";
 import type { Skill, SkillType } from "@/features/skills";
 import { toast } from "sonner";
 
 export function SkillForm({ initial, onDone }: { initial: Skill | null; onDone: () => void }) {
-  const { upsertSkill } = useJornada();
+
   const form = useValidatedForm({ f: { name: initial?.name ?? "", cost: String(initial?.cost ?? 2), type: initial?.type ?? ("dano" as SkillType), dice: initial?.dice ?? "", effect: initial?.effect ?? "", review: initial?.review ?? false } });
   const { handleSubmit, formState: { isSubmitting: loading }, validationErrors: err, setValidationErrors: setErr } = form;
   const f = form.watch("f");
@@ -26,8 +26,7 @@ export function SkillForm({ initial, onDone }: { initial: Skill | null; onDone: 
     if (!f.effect.trim()) x["effect"] = "Descreva o efeito.";
     setErr(x);
     if (Object.keys(x).length) return;
-    await fakeSave();
-    upsertSkill({ id: initial?.id ?? newId("k"), name: f.name.trim(), cost: Number(f.cost), type: f.type, dice: f.dice.trim(), effect: f.effect.trim(), review: f.review });
+    if (!await upsertSkill({ id: initial?.id ?? newId("k"), name: f.name.trim(), cost: Number(f.cost), type: f.type, dice: f.dice.trim(), effect: f.effect.trim(), review: f.review })) return;
     toast.success("Habilidade salva.");
     onDone();
   }

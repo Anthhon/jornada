@@ -176,22 +176,30 @@ export function PageState({ status, retry, children }: { status: "loading" | "re
 export function Confirm({
   open, onOpenChange, title, description, confirmLabel = "Confirmar", destructive, onConfirm,
 }: {
-  open: boolean; onOpenChange: (o: boolean) => void; title: string; description: string; confirmLabel?: string; destructive?: boolean; onConfirm: () => void;
+  open: boolean; onOpenChange: (o: boolean) => void; title: string; description: string; confirmLabel?: string; destructive?: boolean; onConfirm: () => void | Promise<void>;
 }) {
+  const [pending, setPending] = useState(false);
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="parchment-card">
+    <AlertDialog open={open} onOpenChange={(value) => { if (!pending) onOpenChange(value); }}>
+      <AlertDialogContent className="parchment-card !fixed max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto">
         <AlertDialogHeader>
           <AlertDialogTitle className="font-display">{title}</AlertDialogTitle>
           <AlertDialogDescription className="font-reading">{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel className="h-11 rounded-md">Voltar</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending} className="h-11 rounded-md">Voltar</AlertDialogCancel>
           <AlertDialogAction
             className={cn("h-11 rounded-md", destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : "bg-primary text-primary-foreground hover:bg-primary-hover")}
-            onClick={onConfirm}
+            disabled={pending}
+            onClick={(event) => {
+              const result = onConfirm();
+              if (result instanceof Promise) {
+                event.preventDefault(); setPending(true);
+                void result.finally(() => setPending(false));
+              }
+            }}
           >
-            {confirmLabel}
+            {pending ? "Aguarde…" : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
