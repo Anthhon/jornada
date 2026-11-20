@@ -61,6 +61,7 @@ INSTALLED_APPS = [
         'apps.heroes',
         'apps.bosses',
         'apps.journeys',
+        'apps.arena',
         ]
 
 MIDDLEWARE = [
