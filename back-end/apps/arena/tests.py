@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase, TestCase
 
-from apps.bosses.models import Boss
+from apps.bosses.engine import Ability
+from apps.bosses.models import Boss, BossAbility
 from apps.groups.models import Group
 from apps.test_helpers import anon_client, staff_client, user_client
 
@@ -222,3 +223,231 @@ class ArenaApiTests(TestCase):
         resp = client.post(f"/api/arena/rounds/{rid}/end/", {}, format="json")
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(Group.objects.get(id=self.group.id).points, first)
+
+
+def _ability(**kwargs):
+    base = {"name": "Habilidade", "trigger": "TEMPO", "effect": "PENALTY", "value": 10}
+    base.update(kwargs)
+    return Ability(**base)
+
+
+class ArenaAbilityEngineTests(SimpleTestCase):
+    """Habilidades do chefe executando na raid — motor PURO (ADR-017)."""
+
+    def _raid(self, abilities, hp=10000, groups=(1, 2)):
+        state = engine.new_raid(hp, group_ids=groups, abilities=abilities)
+        engine.start(state)
+        return state
+
+    def test_penalidade_reduz_dano_base_sem_tocar_no_hp(self):
+        state = self._raid([_ability()])
+        events = engine.apply_performance(state, 1, 800, criteria={"tempo": 1})
+        # 800 * 1.5 = 1200 de dano; a habilidade tira 10 do Dano Base da equipe
+        self.assertEqual(state.teams[1].base_damage, 1200 - 10)
+        self.assertEqual(state.hp, 10000 - 1200)
+        self.assertIn(engine.KIND_ABILITY, [e.kind for e in events])
+
+    def test_sem_notas_não_dispara_habilidade(self):
+        state = self._raid([_ability()])
+        events = engine.apply_performance(state, 1, 800)
+        self.assertNotIn(engine.KIND_ABILITY, [e.kind for e in events])
+        self.assertEqual(state.teams[1].base_damage, 1200)
+
+    def test_notas_boas_não_disparam(self):
+        state = self._raid([_ability()])
+        good = dict.fromkeys(("tempo", "historico", "paradigma", "caracteristicas",
+                              "usos", "codigo", "criatividade"), 3)
+        events = engine.apply_performance(state, 1, 800, criteria=good)
+        self.assertNotIn(engine.KIND_ABILITY, [e.kind for e in events])
+        self.assertEqual(state.teams[1].base_damage, 1200)
+
+    def test_registro_duplo_com_notas_erro(self):
+        state = self._raid([_ability()])
+        engine.apply_performance(state, 1, 800, criteria={"tempo": 1})
+        with self.assertRaises(engine.ArenaError):
+            engine.apply_performance(state, 1, 800, criteria={"tempo": 3})
+
+    def test_cura_do_chefe_com_nota_ruim(self):
+        state = self._raid([_ability(effect="HEAL", value=5)])
+        engine.apply_performance(state, 1, 800, criteria={"tempo": 1})
+        self.assertEqual(state.hp, 10000 - 1200 + 5)
+
+    def test_drenagem_reduz_dano_e_recupera_pv(self):
+        state = self._raid([_ability(effect="DRAIN", value=50)])
+        engine.apply_performance(state, 1, 800, criteria={"tempo": 1})
+        self.assertEqual(state.teams[1].base_damage, 1200 - 50)
+        self.assertEqual(state.hp, 10000 - 1200 + 50)
+
+    def test_corte_reduz_o_dano_do_ataque_seguinte(self):
+        state = self._raid([_ability(effect="CUT", value=50)])
+        engine.apply_performance(state, 1, 800, criteria={"tempo": 1})
+        self.assertEqual(state.teams[1].damage_factor, 0.5)
+        engine.attack(state, 1, correct=True, points=10)
+        self.assertEqual(state.teams[1].battle_damage, 5)  # 10 * 0.5
+        self.assertEqual(state.teams[1].retaliation_loss, 1)  # round(5 * 0.25)
+
+    def test_corte_só_afeta_a_equipe_cortada(self):
+        state = self._raid([_ability(effect="CUT", value=50)])
+        engine.apply_performance(state, 1, 800, criteria={"tempo": 1})
+        engine.apply_performance(state, 2, 800, criteria={"tempo": 3})
+        engine.attack(state, 2, correct=True, points=10)
+        self.assertEqual(state.teams[2].battle_damage, 10)  # sem corte
+
+    def test_erro_dispara_habilidade_a_cada_dois(self):
+        state = self._raid([_ability(trigger="PERGUNTAS", value=10, every=2)])
+        engine.apply_performance(state, 1, 800)
+        engine.attack(state, 1, correct=False, points=0)
+        self.assertEqual(state.teams[1].base_damage, 1200)  # 1º erro: nada
+        engine.attack(state, 1, correct=False, points=0)
+        self.assertEqual(state.teams[1].base_damage, 1200 - 10)  # 2º erro: caiu
+        self.assertEqual(state.teams[1].wrong_answers, 2)
+
+    def test_alianca_espera_a_segunda_equipe_afetada(self):
+        state = self._raid([_ability(scope="ALLIANCE", min_count=2)])
+        engine.apply_performance(state, 1, 800, criteria={"tempo": 1})
+        self.assertEqual(state.teams[1].base_damage, 1200)  # só 1 afetada
+        engine.apply_performance(state, 2, 800, criteria={"tempo": 1})
+        self.assertEqual(state.teams[2].base_damage, 1200 - 10)  # 2ª dispara
+        self.assertEqual(state.teams[1].base_damage, 1200)  # sem retroativo
+
+    def test_ataque_com_pontos_zero_e_erro_não_explode(self):
+        state = self._raid([_ability(effect="CUT", value=150)])
+        engine.apply_performance(state, 1, 800, criteria={"tempo": 1})
+        self.assertEqual(state.teams[1].damage_factor, 0.0)  # corte limita a 0
+        engine.attack(state, 1, correct=True, points=10)
+        self.assertEqual(state.teams[1].battle_damage, 0)
+
+
+class ArenaAbilityApiTests(TestCase):
+    """Notas por critério + habilidades na API da raid (ADR-017)."""
+
+    def setUp(self):
+        self.boss = Boss.objects.create(name="Vigia", max_hp=15000)
+        BossAbility.objects.create(
+            boss=self.boss, name="Olhar", trigger="TEMPO", effect="PENALTY", value=10
+        )
+        BossAbility.objects.create(
+            boss=self.boss, name="Enxame", trigger="PERGUNTAS",
+            effect="PENALTY", value=10, every=2,
+        )
+        self.group = Group.objects.create(name="Equipe Alfa")
+        self.client = staff_client()
+        created = self.client.post(
+            "/api/arena/rounds/",
+            {"name": "Rodada 1", "boss": self.boss.id, "max_hp": 15000},
+            format="json",
+        )
+        self.rid = created.data["id"]
+        self.client.post(f"/api/arena/rounds/{self.rid}/start/", {}, format="json")
+
+    def _criteria(self, tempo=3):
+        return {
+            "tempo": tempo, "historico": 3, "paradigma": 3,
+            "caracteristicas": 3, "usos": 3, "codigo": 3, "criatividade": 3,
+        }
+
+    def _apply(self, payload):
+        return self.client.post(
+            f"/api/arena/rounds/{self.rid}/apply-performance/",
+            payload, format="json",
+        )
+
+    def test_notas_disparam_habilidade_e_chegam_no_estado(self):
+        resp = self._apply({"group_id": self.group.id, "criteria": self._criteria(1)})
+        self.assertEqual(resp.status_code, 200)
+        state = anon_client().get(f"/api/arena/rounds/{self.rid}/state/")
+        team = state.data["teams"][0]
+        self.assertEqual(team["criteria"]["tempo"], 1)
+        # desempenho derivado: (6*3)*10/18 = 10 -> 1000 * 1.5 = 1500; -10 da penalidade
+        self.assertEqual(team["base_damage"], 1500 - 10)
+        self.assertTrue(any(e["kind"] == "ABILITY" for e in state.data["events"]))
+        # habilidades do chefe expostas no estado (para o card exibir)
+        self.assertEqual(
+            [a["name"] for a in state.data["boss"]["abilities"]],
+            ["Olhar", "Enxame"],
+        )
+
+    def test_desempenho_explícito_sobrescreve_o_derivado(self):
+        resp = self._apply({
+            "group_id": self.group.id, "criteria": self._criteria(1),
+            "performance": 500,
+        })
+        self.assertEqual(resp.status_code, 200)
+        state = anon_client().get(f"/api/arena/rounds/{self.rid}/state/")
+        self.assertEqual(state.data["teams"][0]["base_damage"], 750 - 10)
+
+    def test_notas_ruins_com_dano_zero_ainda_disparam(self):
+        all_absent = dict.fromkeys(
+            ("tempo", "historico", "paradigma", "caracteristicas",
+             "usos", "codigo", "criatividade"), -1,
+        )
+        resp = self._apply({"group_id": self.group.id, "criteria": all_absent})
+        self.assertEqual(resp.status_code, 200)
+        state = anon_client().get(f"/api/arena/rounds/{self.rid}/state/")
+        team = state.data["teams"][0]
+        self.assertEqual(team["base_damage"], 0)  # dano derivado = 0
+        self.assertTrue(any(e["kind"] == "ABILITY" for e in state.data["events"]))
+
+    def test_notas_incompletas_erro(self):
+        resp = self._apply({"group_id": self.group.id, "criteria": {"tempo": 1}})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_nota_fora_da_escala_erro(self):
+        crit = self._criteria()
+        crit["tempo"] = 2
+        resp = self._apply({"group_id": self.group.id, "criteria": crit})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_notas_sem_group_id_erro(self):
+        resp = self._apply({"criteria": self._criteria()})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_registro_duplo_erro(self):
+        self._apply({"group_id": self.group.id, "criteria": self._criteria()})
+        resp = self._apply({"group_id": self.group.id, "criteria": self._criteria()})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_erro_de_pergunta_dispara_a_cada_dois(self):
+        self._apply({"group_id": self.group.id, "criteria": self._criteria()})
+        client = self.client
+        client.post(
+            f"/api/arena/rounds/{self.rid}/attack/",
+            {"group_id": self.group.id, "correct": False, "points": 0},
+            format="json",
+        )
+        state = anon_client().get(f"/api/arena/rounds/{self.rid}/state/")
+        self.assertEqual(state.data["teams"][0]["base_damage"], 1500)
+        self.assertEqual(
+            sum(1 for e in state.data["events"] if e["kind"] == "ABILITY"), 0
+        )
+
+        client.post(
+            f"/api/arena/rounds/{self.rid}/attack/",
+            {"group_id": self.group.id, "correct": False, "points": 0},
+            format="json",
+        )
+        state = anon_client().get(f"/api/arena/rounds/{self.rid}/state/")
+        team = state.data["teams"][0]
+        self.assertEqual(team["base_damage"], 1500 - 10)
+        self.assertEqual(team["wrong_answers"], 2)
+        self.assertEqual(
+            sum(1 for e in state.data["events"] if e["kind"] == "ABILITY"), 1
+        )
+
+    def test_acerto_com_corte_espelha_no_estado(self):
+        # Corta o ataque via habilidade de CONCEITO com nota ruim
+        BossAbility.objects.create(
+            boss=self.boss, name="Asas", trigger="CONCEITO", effect="CUT", value=50
+        )
+        crit = self._criteria()
+        crit["paradigma"] = 1
+        self._apply({"group_id": self.group.id, "criteria": crit})
+        self.client.post(
+            f"/api/arena/rounds/{self.rid}/attack/",
+            {"group_id": self.group.id, "correct": True, "points": 10},
+            format="json",
+        )
+        state = anon_client().get(f"/api/arena/rounds/{self.rid}/state/")
+        team = state.data["teams"][0]
+        self.assertEqual(team["damage_factor"], 0.5)
+        self.assertEqual(team["battle_damage"], 5)

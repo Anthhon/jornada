@@ -25,7 +25,7 @@ class ArenaRoundViewSet(viewsets.ModelViewSet):
     """
 
     queryset = ArenaRound.objects.select_related("boss", "journey").prefetch_related(
-        "contributions__group", "events__group"
+        "contributions__group", "events__group", "boss__abilities"
     )
     serializer_class = ArenaRoundSerializer
 
@@ -83,7 +83,7 @@ class ArenaRoundViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
         return self._run(
             request, services.apply_performance, self.get_object(),
-            data.get("group_id"), data.get("performance"),
+            data.get("group_id"), data.get("performance"), data.get("criteria"),
         )
 
     @action(detail=True, methods=["post"])

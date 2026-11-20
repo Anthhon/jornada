@@ -143,6 +143,21 @@ class TeamContribution(models.Model):
             default=0,
             verbose_name="Ajuste manual do professor",
             )
+    criteria = models.JSONField(
+            null=True,
+            blank=True,
+            verbose_name="Notas por critério",
+            help_text="Rubric da apresentação ({chave: -1|1|3}).",
+            )
+    wrong_answers = models.PositiveIntegerField(
+            default=0,
+            verbose_name="Erros de pergunta",
+            )
+    damage_factor = models.FloatField(
+            default=1.0,
+            verbose_name="Fator de dano de ataque",
+            help_text="Corte de habilidade sobre o ataque (0.5 = metade).",
+            )
 
     class Meta:
         constraints = [
@@ -183,6 +198,7 @@ class ArenaEvent(models.Model):
         RETALIATION = "RETALIATION", "Retaliação"
         REWARD = "REWARD", "Recompensa"
         END = "END", "Fim"
+        ABILITY = "ABILITY", "Habilidade"
 
     round = models.ForeignKey(
             ArenaRound,

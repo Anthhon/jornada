@@ -3,14 +3,29 @@ from rest_framework import serializers
 from .models import ArenaEvent, ArenaRound, TeamContribution
 
 
+class BossAbilityBriefSerializer(serializers.ModelSerializer):
+    """Habilidade do chefe exibida no estado da raid (habilidades executáveis)."""
+
+    class Meta:
+        from apps.bosses.models import BossAbility
+
+        model = BossAbility
+        fields = [
+            "id", "name", "trigger", "effect", "value", "every",
+            "threshold", "mode", "scope", "min_count", "description",
+        ]
+
+
 class BossBriefSerializer(serializers.ModelSerializer):
-    """Resumo do chefe exibido no estado da raid."""
+    """Resumo do chefe exibido no estado da raid (PV + habilidades)."""
+
+    abilities = BossAbilityBriefSerializer(many=True, read_only=True)
 
     class Meta:
         from apps.bosses.models import Boss
 
         model = Boss
-        fields = ["id", "name", "max_hp"]
+        fields = ["id", "name", "max_hp", "abilities"]
 
 
 class ArenaEventSerializer(serializers.ModelSerializer):
@@ -34,6 +49,7 @@ class TeamContributionSerializer(serializers.ModelSerializer):
         fields = [
             "group", "group_name", "base_damage", "battle_damage",
             "total_damage", "retaliation_loss", "manual_adjustment", "points",
+            "criteria", "wrong_answers", "damage_factor",
         ]
 
 
@@ -81,6 +97,9 @@ class ArenaStateSerializer(serializers.ModelSerializer):
                 "retaliation_loss": c.retaliation_loss,
                 "manual_adjustment": c.manual_adjustment,
                 "points": c.points,
+                "criteria": c.criteria,
+                "wrong_answers": c.wrong_answers,
+                "damage_factor": c.damage_factor,
             })
         data.sort(key=lambda t: t["points"], reverse=True)
         for i, t in enumerate(data, 1):
@@ -102,6 +121,38 @@ class AttackSerializer(serializers.Serializer):
 class PerformanceSerializer(serializers.Serializer):
     group_id = serializers.IntegerField(required=False)
     performance = serializers.FloatField(required=False)
+    criteria = serializers.DictField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="7 notas do rubric ({chave: -1|1|3}) — dispara as habilidades.",
+    )
+
+    def validate_criteria(self, value):
+        from apps.bosses.engine import CRITERIA_KEYS, SCORES
+
+        missing = [key for key in CRITERIA_KEYS if key not in value]
+        if missing:
+            raise serializers.ValidationError(
+                f"Notas incompletas: faltam {', '.join(missing)}."
+            )
+        extra = [key for key in value if key not in CRITERIA_KEYS]
+        if extra:
+            raise serializers.ValidationError(
+                f"Critérios desconhecidos: {', '.join(extra)}."
+            )
+        for key, score in value.items():
+            if int(score) not in SCORES:
+                raise serializers.ValidationError(
+                    f"Nota inválida em '{key}': use 3 (Bom), 1 (Parcial) ou -1."
+                )
+        return {key: int(score) for key, score in value.items()}
+
+    def validate(self, attrs):
+        if attrs.get("criteria") is not None and attrs.get("group_id") is None:
+            raise serializers.ValidationError(
+                "Notas por critério exigem group_id (registro por equipe)."
+            )
+        return attrs
 
 
 class DamageSerializer(serializers.Serializer):

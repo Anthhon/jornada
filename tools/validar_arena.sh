@@ -109,15 +109,16 @@ if ! out=$(DB_NAME="$TMP_DB" "$PY" "$BE/manage.py" migrate --noinput 2>&1); then
 else
     ok "banco temporário migrado"
 
-    # seed: professor + chefe + equipe
+    # seed: professor + chefe (com habilidade) + equipe
     if ! out=$(DB_NAME="$TMP_DB" "$PY" "$BE/manage.py" shell -c "
 from django.contrib.auth.models import User
-from apps.bosses.models import Boss
+from apps.bosses.models import Boss, BossAbility
 from apps.groups.models import Group
 User.objects.filter(username='prof_arena').delete()
 User.objects.create_user('prof_arena', 'prof_arena@jornada.dev', 'senha-gate-123', is_staff=True)
 Boss.objects.filter(name='Chefe Gate').delete()
 b = Boss.objects.create(name='Chefe Gate', max_hp=15000)
+BossAbility.objects.create(boss=b, name='Olhar do Gate', trigger='TEMPO', effect='PENALTY', value=10, description='Nota abaixo do máximo em Tempo custa 10 de Dano Base.')
 Group.objects.filter(name='Equipe Arena').delete()
 g = Group.objects.create(name='Equipe Arena')
 print(f'seed ok boss={b.id} group={g.id}')" 2>&1); then
@@ -207,6 +208,45 @@ print("1" if row and row["points"] == 75 else "0")' 2>/dev/null)
                     code=$(http_code -X POST "$BASE/api/arena/rounds/$rid/end/" -H "$AUTH")
                     [ "$code" = "400" ] && ok "2º .../end/ → 400 (sem duplicar recompensa)" \
                                         || bad "2º .../end/ → $code (esperado 400)"
+
+                    # --- habilidades do chefe (ADR-017) ---------------------
+                    rid2=$(curl -s -X POST "$BASE/api/arena/rounds/" \
+                            -H "$AUTH" -H 'Content-Type: application/json' \
+                            -d "{\"name\":\"Rodada Gate 2\",\"boss\":$BOSS_ID,\"max_hp\":15000}" \
+                        | "$PY" -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+                    if [ -n "$rid2" ]; then
+                        code=$(http_code -X POST "$BASE/api/arena/rounds/$rid2/start/" -H "$AUTH")
+                        [ "$code" = "200" ] && ok "2ª rodada .../start/ → 200" \
+                                            || bad "2ª rodada .../start/ → $code (esperado 200)"
+
+                        # notas por critério: Tempo=1 (abaixo do máximo) → penalidade de 10
+                        code=$(http_code -X POST "$BASE/api/arena/rounds/$rid2/apply-performance/" \
+                               -H "$AUTH" -H 'Content-Type: application/json' \
+                               -d "{\"group_id\":$GROUP_ID,\"criteria\":{\"tempo\":1,\"historico\":3,\"paradigma\":3,\"caracteristicas\":3,\"usos\":3,\"codigo\":3,\"criatividade\":3}}")
+                        [ "$code" = "200" ] && ok "POST .../apply-performance/ (notas) → 200" \
+                                            || bad "apply-performance com notas → $code (esperado 200)"
+
+                        # estado: dano derivado 1500 − 10 da habilidade + evento ABILITY
+                        hab_ok=$(curl -s "$BASE/api/arena/rounds/$rid2/state/" | "$PY" -c '
+import sys, json
+d = json.load(sys.stdin)
+t = next((x for x in d["teams"] if x["group_name"] == "Equipe Arena"), None)
+ability = any(e["kind"] == "ABILITY" for e in d["events"])
+good = (t is not None and t["base_damage"] == 1490 and t["criteria"]["tempo"] == 1
+        and ability and len(d["boss"]["abilities"]) == 1 and d["hp"] == 13500)
+print("1" if good else "0")' 2>/dev/null)
+                        [ "$hab_ok" = "1" ] && ok "habilidade disparou: base 1490 (1500−10), evento ABILITY, hp 13500" \
+                                            || bad "estado das habilidades fora do esperado" "$(curl -s "$BASE/api/arena/rounds/$rid2/state/")"
+
+                        # registro duplo com notas → 400 (uma vez por equipe)
+                        code=$(http_code -X POST "$BASE/api/arena/rounds/$rid2/apply-performance/" \
+                               -H "$AUTH" -H 'Content-Type: application/json' \
+                               -d "{\"group_id\":$GROUP_ID,\"criteria\":{\"tempo\":3,\"historico\":3,\"paradigma\":3,\"caracteristicas\":3,\"usos\":3,\"codigo\":3,\"criatividade\":3}}")
+                        [ "$code" = "400" ] && ok "2º apply-performance (notas) → 400 (uma vez por equipe)" \
+                                            || bad "2º apply-performance → $code (esperado 400)"
+                    else
+                        bad "2ª rodada não foi criada"
+                    fi
                 fi
             else
                 bad "login JWT falhou" "$(curl -s -X POST "$BASE/api/token/" -H 'Content-Type: application/json' -d '{"username":"prof_arena","password":"senha-gate-123"}')"

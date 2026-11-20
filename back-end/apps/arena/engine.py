@@ -6,19 +6,27 @@ O módulo Arena convive com a batalha 1v1 (``apps.journeys.battle``): aqui
 Fluxo de uma raid:
     new_raid()          -> cria o estado (CONFIG) com as equipes registradas.
     start()             -> CONFIG -> RUNNING.
-    apply_performance() -> dano base do desempenho da equipe (nota x multiplicador).
-    attack()            -> uma rodada: acerto causa dano e provoca retaliação.
+    apply_performance() -> dano base do desempenho (+ notas da rubric ->
+                           habilidades do chefe disparam: penalidade, cura,
+                           drenagem, corte — ver ``apps.bosses.engine``).
+    attack()            -> uma rodada: acerto causa dano e provoca retaliação;
+                           erro conta para as habilidades "Perguntas".
     retaliate()         -> retaliação direta do chefe (fora do ataque).
     compute_rewards()   -> recompensa final proporcional ao dano total.
     pause()/resume()/end() -> controle do professor.
 
 Este arquivo **não importa Django** de propósito: o motor é testável sem banco
 e a lógica fica isolada da persistência (regra de fronteira de camadas,
-``PLANO.md §4.7``). A orquestração com o ORM vive em ``services.py``.
+``PLANO.md §4.7``). A orquestração com o ORM vive em ``services.py``. A
+avaliação de gatilhos vem de ``apps.bosses.engine`` (também puro) — o
+motor da raid só aplica o efeito no estado (ADR-017).
 """
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+from apps.bosses import engine as boss_engine
+from apps.bosses.engine import Ability
 
 # Estados da raid (espelhados em models.ArenaRound.Status).
 STATUS_CONFIG = "CONFIG"
@@ -39,6 +47,7 @@ KIND_DAMAGE = "DAMAGE"
 KIND_RETALIATION = "RETALIATION"
 KIND_REWARD = "REWARD"
 KIND_END = "END"
+KIND_ABILITY = "ABILITY"
 
 
 class ArenaError(Exception):
@@ -68,6 +77,9 @@ class TeamState:
     battle_damage: int = 0
     retaliation_loss: int = 0
     manual_adjustment: int = 0
+    criteria: Optional[Dict[str, int]] = None  # notas da rubric (uma vez)
+    wrong_answers: int = 0                     # erros de pergunta (gatilho)
+    damage_factor: float = 1.0                 # corte de habilidade (0.5 = 50%)
 
     @property
     def total_damage(self) -> int:
@@ -101,6 +113,7 @@ class RaidState:
     config: RaidConfig = field(default_factory=RaidConfig)
     teams: Dict[int, TeamState] = field(default_factory=dict)
     log: List[Event] = field(default_factory=list)
+    abilities: List[Ability] = field(default_factory=list)
 
     @property
     def is_over(self) -> bool:
@@ -114,9 +127,14 @@ def _log(state, kind, actor, group_id, value, message) -> Event:
 
 
 def new_raid(max_hp: int, config: Optional[RaidConfig] = None,
-             group_ids=()) -> RaidState:
-    """Cria uma raid em CONFIG com as equipes registradas."""
-    state = RaidState(max_hp=max_hp, hp=max_hp, config=config or RaidConfig())
+             group_ids=(), abilities=()) -> RaidState:
+    """Cria uma raid em CONFIG com as equipes e as habilidades do chefe."""
+    state = RaidState(
+        max_hp=max_hp,
+        hp=max_hp,
+        config=config or RaidConfig(),
+        abilities=list(abilities),
+    )
     for gid in group_ids:
         state.teams[gid] = TeamState(group_id=gid)
     return state
@@ -179,24 +197,108 @@ def _check_victory(state: RaidState, events: List[Event]) -> None:
         state.status = STATUS_ENDED
 
 
-def apply_performance(state: RaidState, group_id: int, performance: float) -> List[Event]:
+def _apply_ability(state: RaidState, ability: Ability, team: TeamState,
+                   events: List[Event]) -> None:
+    """Aplica o efeito da habilidade no estado e registra no log (ADR-017)."""
+    if not boss_engine.is_executable(ability):
+        return  # ex.: PR_COST — informativo, sem sistema de PR na raid
+    value = int(ability.value)
+    if value <= 0:
+        return
+    effect = ability.effect
+    group_id = team.group_id
+
+    if effect == boss_engine.EFFECT_PENALTY:
+        applied = min(team.base_damage, value)
+        team.base_damage -= applied
+        message = f"{ability.name}: a equipe perdeu {applied} de Dano Base!"
+    elif effect == boss_engine.EFFECT_HEAL:
+        before = state.hp
+        state.hp = min(state.max_hp, state.hp + value)
+        message = f"{ability.name}: o chefe recuperou {state.hp - before} PV!"
+    elif effect == boss_engine.EFFECT_DRAIN:
+        applied = min(team.base_damage, value)
+        team.base_damage -= applied
+        before = state.hp
+        state.hp = min(state.max_hp, state.hp + applied)
+        message = (
+            f"{ability.name}: drenou {applied} de Dano Base e o chefe "
+            f"recuperou {state.hp - before} PV!"
+        )
+    elif effect in (boss_engine.EFFECT_CUT, boss_engine.EFFECT_DISADV):
+        cut = min(1.0, value / 100)
+        # O corte mais forte vence (não multiplica entre si).
+        team.damage_factor = min(team.damage_factor, 1 - cut)
+        message = f"{ability.name}: dano de ataque da equipe cortado em {value}%!"
+    else:
+        return
+
+    events.append(
+        _log(state, KIND_ABILITY, ACTOR_BOS, group_id, value, message)
+    )
+
+
+def _evaluate_criteria_abilities(state: RaidState, team: TeamState,
+                                 events: List[Event]) -> None:
+    """Avalia os gatilhos por critério no registro do desempenho (com notas)."""
+    for ability in state.abilities:
+        if not boss_engine.TRIGGER_CRITERIA.get(ability.trigger):
+            continue  # PERGUNTAS (attack) e SUPORTE (informativo)
+        if ability.scope == boss_engine.SCOPE_ALLIANCE:
+            affected_count = sum(
+                1 for other in state.teams.values()
+                if other.criteria and boss_engine.affected(ability, other.criteria)
+            )
+            fires = boss_engine.fires_for_alliance(
+                ability, team.criteria, affected_count
+            )
+        else:
+            fires = boss_engine.fires_for_team(ability, team.criteria)
+        if fires:
+            _apply_ability(state, ability, team, events)
+
+
+def _evaluate_question_abilities(state: RaidState, team: TeamState,
+                                 events: List[Event]) -> None:
+    """Avalia os gatilhos "Perguntas" a cada ``every`` erros da equipe."""
+    for ability in state.abilities:
+        if boss_engine.fires_for_questions(ability, team.wrong_answers):
+            _apply_ability(state, ability, team, events)
+
+
+def apply_performance(state: RaidState, group_id: int, performance: float,
+                      criteria: Optional[Dict[str, int]] = None) -> List[Event]:
     """Dano base do desempenho da equipe: ``round(performance * multiplier)``.
 
     ``performance`` é um número (ex.: nota 0-10 * 100) — a escala é definida
     pela camada de serviço. Só conta se a raid estiver em andamento.
+
+    ``criteria`` (opcional) são as 7 notas da rubric da apresentação: com
+    elas as **habilidades do chefe** são avaliadas (gatilhos por critério) e
+    a equipe fica com as notas registradas (uma vez por raid).
     """
     _ensure_running(state)
     team = _ensure_team(state, group_id)
+    if criteria is not None and team.criteria is not None:
+        raise ArenaError("Desempenho já registrado para esta equipe.")
+    if criteria is not None:
+        team.criteria = dict(criteria)
+
+    events: List[Event] = []
     damage = round(performance * state.config.multiplier)
-    if damage <= 0:
+    if damage > 0:
+        team.base_damage += damage
+        state.hp = max(0, state.hp - damage)
+        events.append(
+            _log(state, KIND_DAMAGE, ACTOR_TEAM, group_id, damage,
+                 f"A equipe causou {damage} de dano (desempenho).")
+        )
+    elif criteria is None:
         return []
-    team.base_damage += damage
-    state.hp = max(0, state.hp - damage)
     state.turn += 1
-    events = [
-        _log(state, KIND_DAMAGE, ACTOR_TEAM, group_id, damage,
-             f"A equipe causou {damage} de dano (desempenho).")
-    ]
+
+    if team.criteria is not None:
+        _evaluate_criteria_abilities(state, team, events)
     _check_victory(state, events)
     return events
 
@@ -222,9 +324,11 @@ def add_damage(state: RaidState, group_id: int, damage: int) -> List[Event]:
 def attack(state: RaidState, group_id: int, correct: bool, points: int) -> List[Event]:
     """Uma rodada de ataque: acerto causa dano e provoca retaliação.
 
-    - acerto: ``battle_damage += points`` e o chefe perde ``points`` de HP;
-      depois o chefe retalia ``round(points * retaliation_ratio)`` pontos.
-    - erro: nenhum dano, nenhum HP perdido, sem retaliação.
+    - acerto: o dano entra **com o corte** das habilidades do chefe
+      (``team.damage_factor``), ``battle_damage += dano`` e o chefe perde
+      ``dano`` de HP; depois o chefe retalia ``round(dano * retaliation_ratio)``.
+    - erro: nenhum dano; o erro **conta** para as habilidades "Perguntas"
+      (a cada ``every`` erros o efeito dispara).
     """
     _ensure_running(state)
     team = _ensure_team(state, group_id)
@@ -232,6 +336,8 @@ def attack(state: RaidState, group_id: int, correct: bool, points: int) -> List[
 
     if correct:
         damage = max(0, int(points))
+        if team.damage_factor < 1.0:
+            damage = max(0, round(damage * team.damage_factor))
         team.battle_damage += damage
         state.hp = max(0, state.hp - damage)
         state.turn += 1
@@ -252,6 +358,8 @@ def attack(state: RaidState, group_id: int, correct: bool, points: int) -> List[
             _log(state, KIND_DAMAGE, ACTOR_TEAM, group_id, 0,
                  "A equipe errou o ataque.")
         )
+        team.wrong_answers += 1
+        _evaluate_question_abilities(state, team, events)
 
     _check_victory(state, events)
     return events

@@ -11,6 +11,8 @@ from django.utils import timezone
 from apps.groups.models import Group
 from apps.users.models import Student
 
+from apps.bosses.engine import Ability
+
 from . import engine
 from .models import ArenaEvent, ArenaRound
 
@@ -22,12 +24,16 @@ def build_state(round_obj: ArenaRound) -> engine.RaidState:
         retaliation_ratio=round_obj.retaliation_ratio,
         reward_factor=round_obj.reward_factor,
     )
+    abilities = [
+        Ability.from_model(a) for a in round_obj.boss.abilities.all()
+    ]
     state = engine.RaidState(
         max_hp=round_obj.max_hp,
         hp=round_obj.hp,
         status=round_obj.status,
         turn=round_obj.turn,
         config=config,
+        abilities=abilities,
     )
     for c in round_obj.contributions.all():
         state.teams[c.group_id] = engine.TeamState(
@@ -36,6 +42,9 @@ def build_state(round_obj: ArenaRound) -> engine.RaidState:
             battle_damage=c.battle_damage,
             retaliation_loss=c.retaliation_loss,
             manual_adjustment=c.manual_adjustment,
+            criteria=c.criteria,
+            wrong_answers=c.wrong_answers,
+            damage_factor=c.damage_factor,
         )
     return state
 
@@ -81,7 +90,10 @@ def _persist(round_obj: ArenaRound, state: engine.RaidState, events: list) -> No
     for gid, team in state.teams.items():
         contrib, _ = round_obj.contributions.get_or_create(group_id=gid)
         changed = []
-        for field in ("base_damage", "battle_damage", "retaliation_loss", "manual_adjustment"):
+        for field in (
+            "base_damage", "battle_damage", "retaliation_loss",
+            "manual_adjustment", "criteria", "wrong_answers", "damage_factor",
+        ):
             if getattr(contrib, field) != getattr(team, field):
                 setattr(contrib, field, getattr(team, field))
                 changed.append(field)
@@ -139,16 +151,34 @@ def add_damage(round_obj, group_id, damage):
     return _run(round_obj, lambda st: engine.add_damage(st, group_id, damage))
 
 
-def apply_performance(round_obj, group_id=None, performance=None):
+def performance_from_criteria(criteria: dict) -> float:
+    """Desempenho derivado das notas do rubric (fórmula do front, ADR-017).
+
+    Ignora Tempo (como ``presentationGrade``): soma dos outros 6 critérios
+    ``x10/18``, limitada a 0..10, ``x100`` para a escala da raid (nota 8 -> 800).
+    """
+    total = sum(int(v) for key, v in criteria.items() if key != "tempo")
+    grade = (total * 10) / 18
+    return max(0.0, min(10.0, grade)) * 100
+
+
+def apply_performance(round_obj, group_id=None, performance=None, criteria=None):
     def mutate(state):
         if group_id is not None:
-            perf = performance if performance is not None else default_performance(group_id)
-            targets = [(group_id, perf)]
-        else:
-            targets = [(gid, default_performance(gid)) for gid in state.teams]
+            if criteria is not None and performance is None:
+                perf = performance_from_criteria(criteria)
+            else:
+                perf = (
+                    performance if performance is not None
+                    else default_performance(group_id)
+                )
+            return engine.apply_performance(state, group_id, perf, criteria=criteria)
+        # Modo em lote (sem notas): não avalia habilidades por critério.
         events = []
-        for gid, perf in targets:
-            events.extend(engine.apply_performance(state, gid, perf))
+        for gid in state.teams:
+            events.extend(
+                engine.apply_performance(state, gid, default_performance(gid))
+            )
         return events
     return _run(round_obj, mutate)
 
