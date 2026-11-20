@@ -217,6 +217,12 @@ export const Play = createIcon("Play", [
   ["shade", "M7 14H9V13H11V11H13V10H15V11H13V13H11V15H9V17H7V18H6V17H7Z"],
   ["shine", "M6 3H7V12H6Z"],
 ]);
+export const Pause = createIcon("Pause", [
+  ["ink", "M5 2H8V3H9V17H8V18H5V17H4V3H5V2ZM12 2H15V3H16V17H15V18H12V17H11V3H12V2Z"],
+  ["gold", "M5 3H8V17H5ZM12 3H15V17H12Z"],
+  ["shade", "M7 4H8V16H7ZM14 4H15V16H14Z"],
+  ["shine", "M5 4H6V16H5ZM12 4H13V16H12Z"],
+]);
 export const Mail = createIcon("Mail", [
   ["ink", "M2 3H18V4H19V17H1V4H2Z"],
   ["gold", "M2 5H18V16H2Z"],
