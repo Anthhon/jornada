@@ -53,8 +53,10 @@ export const arenaService = {
   end: (id: number) => post(id, "end"),
   attack: (id: number, payload: { group_id: number; correct: boolean; points: number }) =>
     post(id, "attack", payload),
-  applyPerformance: (id: number, payload: { group_id?: number; performance?: number }) =>
-    post(id, "apply-performance", payload),
+  applyPerformance: (
+    id: number,
+    payload: { group_id?: number; performance?: number; criteria?: Record<string, number> },
+  ) => post(id, "apply-performance", payload),
   damage: (id: number, payload: { group_id: number; damage: number }) =>
     post(id, "damage", payload),
   override: (id: number, payload: { group_id: number; amount: number }) =>

@@ -98,8 +98,8 @@ function Arena() {
   const handleAttack = (payload: { group_id: number; correct: boolean; points: number }) => {
     if (effectiveId) void run(() => arenaService.attack(effectiveId, payload), "Ataque registrado.");
   };
-  const handleApplyPerformance = () => {
-    if (effectiveId) void run(() => arenaService.applyPerformance(effectiveId, {}), "Desempenho aplicado.");
+  const handleApplyPerformance = (payload: { group_id: number; criteria: Record<string, number> }) => {
+    if (effectiveId) void run(() => arenaService.applyPerformance(effectiveId, payload), "Notas registradas.");
   };
 
   const handleCreated = (id: number) => {

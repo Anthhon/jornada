@@ -22,6 +22,12 @@ export const arenaTeamSchema = z.object({
   manual_adjustment: z.number(),
   points: z.number(),
   position: z.number(),
+  /** Notas da rubric da apresentação (7 critérios) — `null` = não registrado. */
+  criteria: z.record(z.string(), z.number()).nullable(),
+  /** Erros de pergunta da equipe (gatilho "Perguntas"). */
+  wrong_answers: z.number(),
+  /** Corte de habilidade sobre o dano de ataque (0.5 = metade). */
+  damage_factor: z.number(),
 });
 
 export const arenaEventSchema = z.object({
@@ -35,10 +41,26 @@ export const arenaEventSchema = z.object({
   created_at: z.string().nullable(),
 });
 
+/** Habilidade executável do chefe (espela `BossAbility`, ADR-017). */
+export const arenaAbilitySchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  trigger: z.string(),
+  effect: z.string(),
+  value: z.number(),
+  every: z.number(),
+  threshold: z.number(),
+  mode: z.string(),
+  scope: z.string(),
+  min_count: z.number(),
+  description: z.string(),
+});
+
 export const arenaBossSchema = z.object({
   id: z.number(),
   name: z.string(),
   max_hp: z.number(),
+  abilities: z.array(arenaAbilitySchema),
 });
 
 /** Payload do `GET /arena/rounds/{id}/state/` (público, polling). */
@@ -79,6 +101,7 @@ export const arenaBossOptionSchema = z.object({
 
 export type ArenaTeam = z.infer<typeof arenaTeamSchema>;
 export type ArenaEvent = z.infer<typeof arenaEventSchema>;
+export type ArenaAbility = z.infer<typeof arenaAbilitySchema>;
 export type ArenaBoss = z.infer<typeof arenaBossSchema>;
 export type ArenaState = z.infer<typeof arenaStateSchema>;
 export type ArenaRound = z.infer<typeof arenaRoundSchema>;

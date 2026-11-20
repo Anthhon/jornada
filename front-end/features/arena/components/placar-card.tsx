@@ -42,6 +42,12 @@ export function PlacarCard({ teams }: { teams: ArenaTeam[] }) {
                   {team.retaliation_loss > 0 && (
                     <span className="text-destructive"> · −{team.retaliation_loss}</span>
                   )}
+                  {team.criteria && <span className="text-success"> · notas ✓</span>}
+                  {team.damage_factor < 1 && (
+                    <span className="text-destructive">
+                      {" "}· ataque −{Math.round((1 - team.damage_factor) * 100)}%
+                    </span>
+                  )}
                 </p>
               </div>
             </li>

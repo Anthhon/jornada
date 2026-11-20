@@ -11,7 +11,8 @@ export const catalogSchemas = { students: studentSchema, groups: groupSchema, sk
 export const catalogSchema = z.object({ students: z.array(studentSchema), groups: z.array(groupSchema), skills: z.array(skillSchema), heroes: z.array(heroSchema), bosses: z.array(bossSchema), questions: z.array(questionSchema) });
 export type Catalog = z.infer<typeof catalogSchema>;
 export type CatalogResource = keyof Catalog;
-const key = "jornada-mock-catalog-v1";
+/** v2: catálogo com habilidades estruturadas dos chefes (ADR-017). */
+const key = "jornada-mock-catalog-v2";
 const initial = { students: seedStudents, groups: seedTeams, skills: seedSkills, heroes: seedHeroes, bosses: seedBosses, questions: seedQuestions };
 let memory: Catalog = catalogSchema.parse(structuredClone(initial));
 export function readCatalog(): Catalog {

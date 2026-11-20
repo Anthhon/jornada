@@ -9,6 +9,7 @@ import {
   Gem,
   Play,
   Skull,
+  Sparkles,
 } from "@/components/icons/rpg-icons";
 import { cn } from "@/lib/utils";
 import type { ArenaEvent } from "../schemas/arena";
@@ -19,6 +20,8 @@ function eventIcon(kind: string) {
       return <Flame className="h-4 w-4 text-destructive" aria-hidden />;
     case "RETALIATION":
       return <Skull className="h-4 w-4 text-destructive" aria-hidden />;
+    case "ABILITY":
+      return <Sparkles className="h-4 w-4 text-accent-foreground" aria-hidden />;
     case "REWARD":
       return <Gem className="h-4 w-4 text-accent-foreground" aria-hidden />;
     case "END":
@@ -59,6 +62,7 @@ export function BattleLog({ events }: { events: ArenaEvent[] }) {
               className={cn(
                 "flex items-start gap-2.5 rounded-md border border-border/50 bg-background/40 px-3 py-2 text-sm",
                 event.kind === "RETALIATION" && "border-destructive/30",
+                event.kind === "ABILITY" && "border-accent/40",
                 event.kind === "REWARD" && "border-accent/40",
               )}
             >

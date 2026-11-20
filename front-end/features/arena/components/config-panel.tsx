@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Scroll } from "@/features/journey/components/ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CRITERIA } from "@/constants/evaluation";
 import { Flag, Pause, Play, Sparkles } from "@/components/icons/rpg-icons";
 import type { ArenaState } from "../schemas/arena";
 
@@ -15,7 +16,8 @@ interface ConfigPanelProps {
   onResume: () => void;
   onEnd: () => void;
   onAttack: (payload: { group_id: number; correct: boolean; points: number }) => void;
-  onApplyPerformance: () => void;
+  /** Registro por equipe com as 7 notas da rubric (dispara as habilidades). */
+  onApplyPerformance: (payload: { group_id: number; criteria: Record<string, number> }) => void;
 }
 
 /** Painel do professor: config da rodada, controle de vida e registro de ataque. */
@@ -32,10 +34,15 @@ export function ConfigPanel({
   const [teamId, setTeamId] = useState("");
   const [correct, setCorrect] = useState(true);
   const [points, setPoints] = useState("10");
+  const [scores, setScores] = useState<Record<string, number>>(() =>
+    Object.fromEntries(CRITERIA.map((criterion) => [criterion.key, 3])),
+  );
 
   const running = state.status === "RUNNING";
   const canAttack = running && state.teams.length > 0;
   const parsedPoints = Number(points);
+  const selectedTeam = state.teams.find((team) => team.group_id === Number(teamId));
+  const alreadyRegistered = !!selectedTeam?.criteria;
 
   return (
     <Scroll className="flex h-full flex-col gap-4">
@@ -99,11 +106,61 @@ export function ConfigPanel({
         )}
       </div>
 
-      {/* Desempenho (dano base) — só em batalha */}
+      {/* Registro de desempenho por equipe — notas da rubric (ADR-017) */}
       {running && (
-        <Button variant="secondary" className="w-full" disabled={busy} onClick={onApplyPerformance}>
-          <Sparkles /> Aplicar desempenho das equipes
-        </Button>
+        <div className="space-y-2 border-t border-border pt-3">
+          <p className="text-[0.65rem] uppercase tracking-widest text-muted-foreground">Registrar desempenho (notas)</p>
+          <select
+            aria-label="Equipe"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={teamId}
+            onChange={(event) => setTeamId(event.target.value)}
+          >
+            <option value="">Selecione a equipe…</option>
+            {state.teams.map((team) => (
+              <option key={team.group_id} value={String(team.group_id)}>
+                {team.group_name}
+                {team.criteria ? " · notas registradas" : ""}
+              </option>
+            ))}
+          </select>
+
+          <div className="space-y-1.5 rounded-md border border-border/60 bg-background/40 px-3 py-2.5">
+            {CRITERIA.map((criterion) => (
+              <div key={criterion.key} className="flex items-center justify-between gap-2">
+                <label htmlFor={`criteria-${criterion.key}`} className="text-xs text-muted-foreground">
+                  {criterion.label}
+                </label>
+                <select
+                  id={`criteria-${criterion.key}`}
+                  className="w-36 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  value={scores[criterion.key]}
+                  onChange={(event) =>
+                    setScores({ ...scores, [criterion.key]: Number(event.target.value) })
+                  }
+                >
+                  <option value={3}>Bom (3)</option>
+                  <option value={1}>Parcial (1)</option>
+                  <option value={-1}>Ausente (−1)</option>
+                </select>
+              </div>
+            ))}
+          </div>
+
+          <Button
+            className="w-full"
+            variant="secondary"
+            disabled={!teamId || busy || alreadyRegistered}
+            onClick={() => onApplyPerformance({ group_id: Number(teamId), criteria: scores })}
+          >
+            <Sparkles /> Aplicar notas da equipe
+          </Button>
+          {alreadyRegistered && (
+            <p className="text-xs text-muted-foreground">
+              {selectedTeam?.group_name} já tem notas registradas (uma vez por equipe).
+            </p>
+          )}
+        </div>
       )}
 
       {/* Registro de ataque (acerto/erro de uma equipe) */}

@@ -4,21 +4,148 @@ import { BossForm } from "./boss-form";
 import { upsertBoss, removeBoss } from "@/lib/catalog-mutations";
 import Image from "next/image";
 
-
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { Confirm, EmptyState, HpBar, PageHeader, PageState, Scroll } from "@/features/journey/components/ui";
+import { Confirm, EmptyState, PageHeader, PageState } from "@/features/journey/components/ui";
 import { useCatalogLoad } from "@/hooks/use-catalog-load";
 import { cn } from "@/lib/utils";
 import { useJornada } from "@/stores/journey-store";
-import type { Boss } from "@/features/bosses";
+import type { Boss, BossSkill } from "@/features/bosses";
+import { EFFECT_SHORT_LABELS, TRIGGER_LABELS } from "../constants/bosses-page";
 import { Pencil, Plus, Skull, Trash2 } from "@/components/icons/rpg-icons";
 import { useState } from "react";
 import { toast } from "sonner";
 
+/** Resumo executável da habilidade (valor + condição), como no card da raid. */
+function skillParams(s: BossSkill): string {
+  const parts: string[] = [];
+  switch (s.effect) {
+    case "PENALTY": parts.push(`−${s.value} Dano Base`); break;
+    case "HEAL": parts.push(`+${s.value} PV`); break;
+    case "DRAIN": parts.push(`${s.value} Dano Base → PV`); break;
+    case "CUT": parts.push(`dano de ataque −${s.value}%`); break;
+    case "DISADV": parts.push(`desvantagem −${s.value}%`); break;
+    case "PR_COST": parts.push(`+${s.value} PR`); break;
+  }
+  if (s.trigger === "PERGUNTAS") {
+    parts.push(`a cada ${s.every} erro${s.every === 1 ? "" : "s"}`);
+  } else if (s.trigger !== "SUPORTE") {
+    if (s.mode === "AVERAGE") parts.push(`média dos critérios < nota ${s.threshold}`);
+    else if (s.mode === "SPREAD") parts.push(`variação das notas ≥ ${s.threshold}`);
+    else if (s.threshold < 3) parts.push(`nota abaixo de ${s.threshold}`);
+  }
+  if (s.scope === "ALLIANCE") parts.push(`mín. ${s.min_count} equipe${s.min_count === 1 ? "" : "s"} afetada${s.min_count === 1 ? "" : "s"}`);
+  return parts.join(" · ");
+}
 
+/** Cartão do chefe — visual forte no card de raid da imagem (PV vermelho, emblema, arte). */
+function BossCard({
+  boss,
+  onEdit,
+  onDelete,
+  onToggle,
+}: {
+  boss: Boss;
+  onEdit: (boss: Boss) => void;
+  onDelete: (boss: Boss) => void;
+  onToggle: (boss: Boss, active: boolean) => void;
+}) {
+  const [failed, setFailed] = useState(false);
 
+  return (
+    <article
+      className={cn(
+        "flex flex-col overflow-hidden rounded-xl border border-border-strong/50 bg-guild-stone text-guild-ink shadow-[var(--guild-shadow)]",
+        !boss.active && "opacity-70",
+      )}
+    >
+      {/* Identidade (emblema + nome + selo), como no card da raid */}
+      <div className="flex items-start gap-3 px-4 pt-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-destructive/60 bg-destructive/15">
+          <Skull className="h-6 w-6 text-destructive" strokeWidth={1.5} aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.65rem] uppercase tracking-widest text-guild-ink/60">
+            {boss.active ? "Chefe da jornada" : "Chefe fora do sorteio"}
+          </p>
+          <h3 className="truncate font-display text-xl text-white">{boss.name}</h3>
+          <p className="truncate text-xs text-guild-ink/70">{boss.specialty}</p>
+        </div>
+        <div className="flex shrink-0 gap-0.5">
+          <Button
+            variant="ghost" size="icon"
+            className="text-guild-ink/70 hover:bg-white/10 hover:text-white"
+            aria-label={`Editar ${boss.name}`} onClick={() => onEdit(boss)}
+          ><Pencil /></Button>
+          <Button
+            variant="ghost" size="icon"
+            className="text-guild-ink/70 hover:bg-white/10 hover:text-white"
+            aria-label={`Excluir ${boss.name}`} onClick={() => onDelete(boss)}
+          ><Trash2 /></Button>
+        </div>
+      </div>
+
+      {/* Barra de PV vermelha + chip (padrão da imagem) */}
+      <div className="flex items-center gap-2 px-4 pt-3">
+        <span className="rounded bg-black/50 px-2 py-0.5 font-display text-[0.7rem] font-semibold uppercase tracking-wider text-white/90">
+          PV
+        </span>
+        <div
+          className="h-4 flex-1 overflow-hidden rounded-full border border-black/40 bg-black/50"
+          role="meter" aria-valuenow={boss.hp} aria-valuemax={boss.hp} aria-valuemin={0}
+        >
+          <div className="h-full w-full rounded-full bg-gradient-to-r from-destructive/75 via-destructive to-destructive/90" />
+        </div>
+        <span className="font-display text-xs font-semibold text-white/90">
+          {boss.hp} / {boss.hp}
+        </span>
+      </div>
+
+      {/* Arte do chefe */}
+      <div className="relative mt-3 h-44 w-full bg-black/30">
+        {boss.image && !failed ? (
+          <Image
+            src={boss.image} alt={boss.name} fill unoptimized
+            className="object-cover" onError={() => setFailed(true)}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center" aria-hidden>
+            <Skull className="h-14 w-14 text-white/20" strokeWidth={1} />
+          </div>
+        )}
+      </div>
+
+      {/* Descrição + habilidades + sorteio */}
+      <div className="flex flex-1 flex-col gap-3 px-4 py-4">
+        <p className="font-reading text-sm text-guild-ink/80">{boss.description}</p>
+
+        <ul className="space-y-2 border-t border-white/10 pt-3">
+          {boss.skills.map((s, i) => (
+            <li key={i} className="rounded-md border border-white/10 bg-black/25 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="text-sm font-medium text-white">{s.name}</p>
+                <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[0.65rem] text-guild-ink/80">
+                  {TRIGGER_LABELS[s.trigger]}
+                </span>
+                <span className="rounded-full border border-destructive/40 bg-destructive/15 px-2 py-0.5 text-[0.65rem] text-destructive">
+                  {EFFECT_SHORT_LABELS[s.effect]}
+                </span>
+              </div>
+              <p className="mt-1 font-reading text-xs leading-relaxed text-guild-ink/70">{s.description}</p>
+              <p className="mt-1 text-[0.65rem] uppercase tracking-wide text-guild-ink/50">{skillParams(s)}</p>
+            </li>
+          ))}
+        </ul>
+
+        <label className="mt-auto flex items-center justify-between rounded-md border border-white/10 bg-black/25 px-3 py-2 text-sm">
+          <span>{boss.active ? "Ativo no sorteio" : "Fora do sorteio"}</span>
+          <Switch checked={boss.active} onCheckedChange={(c) => onToggle(boss, c)} />
+        </label>
+      </div>
+    </article>
+  );
+}
 
 function Chefes() {
   const { status, retry } = useCatalogLoad();
@@ -28,57 +155,49 @@ function Chefes() {
 
   return (
     <PageState status={status} retry={retry}>
-      <PageHeader title="Chefes" description="O chefe não ataca: pune os pontos fracos da apresentação. Só os ativos entram no sorteio." action={<Button onClick={() => setEditing("new")}><Plus /> Novo chefe</Button>} />
+      <PageHeader
+        title="Chefes"
+        description="O chefe não ataca: pune os pontos fracos da apresentação. Só os ativos entram no sorteio."
+        action={<Button onClick={() => setEditing("new")}><Plus /> Novo chefe</Button>}
+      />
       {bosses.length === 0 && <EmptyState title="Nenhum chefe cadastrado" hint="Cadastre o primeiro chefe." />}
       <div className="grid gap-6 md:grid-cols-2">
         {bosses.map((b) => (
-          <Scroll key={b.id} className={cn("flex flex-col gap-4 p-6 transition-opacity", !b.active && "opacity-60")}>
-            {b.image && <BossPortrait src={b.image} name={b.name} />}
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-destructive/50 bg-destructive/10"><Skull className="h-5 w-5 text-destructive" strokeWidth={1.5} /></div>
-                <div>
-                  <h3 className="text-xl leading-tight">{b.name}</h3>
-                  <p className="text-xs text-muted-foreground">{b.specialty}</p>
-                </div>
-              </div>
-              <div className="flex"><Button variant="ghost" size="icon" aria-label={`Editar ${b.name}`} onClick={() => setEditing(b)}><Pencil /></Button><Button variant="ghost" size="icon" aria-label={`Excluir ${b.name}`} onClick={() => setDeleting(b)}><Trash2 /></Button></div>
-            </div>
-            <p className="font-reading text-sm">{b.description}</p>
-            <HpBar hp={b.hp} max={b.hp} />
-            <ul className="space-y-2.5 border-t border-border pt-3">
-              {b.skills.map((s, i) => (
-                <li key={i}>
-                  <p className="text-sm"><span className="font-display font-semibold">{s.name}</span> <span className="ml-1 rounded-full bg-secondary px-2 py-0.5 text-[0.7rem] text-muted-foreground">{s.trigger}</span></p>
-                  <p className="font-reading text-xs leading-relaxed text-muted-foreground">{s.effect}</p>
-                </li>
-              ))}
-            </ul>
-            <label className="mt-auto flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
-              <span>{b.active ? "Ativo no sorteio" : "Fora do sorteio"}</span>
-              <Switch checked={b.active} onCheckedChange={async (c) => { if (await upsertBoss({ ...b, active: c })) toast.success(c ? `${b.name} entra no sorteio.` : `${b.name} sai do sorteio.`); }} />
-            </label>
-          </Scroll>
+          <BossCard
+            key={b.id}
+            boss={b}
+            onEdit={setEditing}
+            onDelete={setDeleting}
+            onToggle={async (boss, active) => {
+              if (await upsertBoss({ ...boss, active })) {
+                toast.success(active ? `${boss.name} entra no sorteio.` : `${boss.name} sai do sorteio.`);
+              }
+            }}
+          />
         ))}
       </div>
       <Sheet open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
             <SheetTitle className="font-display text-xl">{editing === "new" ? "Novo chefe" : "Editar chefe"}</SheetTitle>
-            <SheetDescription className="font-reading">Vida e habilidades punitivas.</SheetDescription>
+            <SheetDescription className="font-reading">Vida e habilidades punitivas com gatilhos executáveis.</SheetDescription>
           </SheetHeader>
           {editing && <BossForm key={editing === "new" ? "n" : editing.id} initial={editing === "new" ? null : editing} onDone={() => setEditing(null)} />}
         </SheetContent>
       </Sheet>
-      <Confirm open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)} title="Excluir chefe?" description={deleting?.name ?? ""} confirmLabel="Excluir" destructive onConfirm={async () => { if (deleting && await removeBoss(deleting.id)) { toast.success("Chefe removido."); setDeleting(null); } }} />
+      <Confirm
+        open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}
+        title="Excluir chefe?" description={deleting?.name ?? ""}
+        confirmLabel="Excluir" destructive
+        onConfirm={async () => {
+          if (deleting && await removeBoss(deleting.id)) {
+            toast.success("Chefe removido.");
+            setDeleting(null);
+          }
+        }}
+      />
     </PageState>
   );
 }
 
-
-
 export { Chefes as BossesPage };
-function BossPortrait({ src, name }: { src: string; name: string }) {
-  const [failed, setFailed] = useState(false);
-  return failed ? <p role="status" className="text-sm text-muted-foreground">Imagem indisponível.</p> : <div className="relative h-48"><Image src={src} alt={name} fill unoptimized className="object-contain" onError={() => setFailed(true)} /></div>;
-}

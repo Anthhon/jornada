@@ -4,13 +4,40 @@ import { isMockTeacher } from "../mock-teacher";
 
 /**
  * Mock da Arena (raid) — espelha o motor de `back-end/apps/arena/engine.py`
- * (transições, dano, retaliação, recompensa única) para a UI funcionar sem o
- * backend. Persiste em `localStorage` (fallback em memória), como a agenda.
+ * (transições, dano, retaliação, recompensa única, **habilidades do chefe**
+ * com notas por critério — ADR-017) para a UI funcionar sem o backend.
+ * Persiste em `localStorage` (fallback em memória), como a agenda.
  */
 
-const storageKey = "jornada-mock-arena-v1";
+/** v2: notas por critério, habilidades e corte de dano (ADR-017). */
+const storageKey = "jornada-mock-arena-v2";
 
 type Status = "CONFIG" | "RUNNING" | "PAUSED" | "ENDED";
+
+/** Notas da rubric (mesmas chaves do back). */
+const CRITERIA_KEYS = ["tempo", "historico", "paradigma", "caracteristicas", "usos", "codigo", "criatividade"] as const;
+
+/** Habilidade executável (espela `BossAbility`). */
+interface MockAbility {
+  id: number;
+  name: string;
+  trigger: string;
+  effect: string;
+  value: number;
+  every: number;
+  threshold: number;
+  mode: string;
+  scope: string;
+  min_count: number;
+  description: string;
+}
+
+interface MockBoss {
+  id: number;
+  name: string;
+  max_hp: number;
+  abilities: MockAbility[];
+}
 
 interface TeamData {
   group_id: number;
@@ -19,6 +46,9 @@ interface TeamData {
   battle_damage: number;
   retaliation_loss: number;
   manual_adjustment: number;
+  criteria: Record<string, number> | null;
+  wrong_answers: number;
+  damage_factor: number;
 }
 
 interface MockEvent {
@@ -43,7 +73,7 @@ interface MockRound {
   multiplier: number;
   retaliation_ratio: number;
   reward_factor: number;
-  boss: { id: number; name: string; max_hp: number };
+  boss: MockBoss;
   teams: Record<string, TeamData>;
   events: MockEvent[];
   rewards_credited: boolean;
@@ -55,10 +85,69 @@ interface MockArena {
   rounds: MockRound[];
 }
 
-const BOSSES = [
-  { id: 1, name: "Vigia das Ruínas", max_hp: 15000 },
-  { id: 2, name: "Colosso de Pedra", max_hp: 22000 },
-  { id: 3, name: "Espectro do Abismo", max_hp: 12000 },
+/** Os 7 chefes da landing com as habilidades executáveis (`seed_chefes`). */
+function ability(
+  id: number,
+  name: string,
+  trigger: string,
+  effect: string,
+  value: number,
+  description: string,
+  extra: Partial<Pick<MockAbility, "every" | "threshold" | "mode" | "scope" | "min_count">> = {},
+): MockAbility {
+  return { id, name, trigger, effect, value, every: 1, threshold: 3, mode: "ANY", scope: "TEAM", min_count: 1, description, ...extra };
+}
+
+const BOSSES: MockBoss[] = [
+  {
+    id: 1, name: "Mothman, o Sábio", max_hp: 150, abilities: [
+      ability(1, "Olhar Hipnótico", "TEMPO", "PENALTY", 10, "Se a equipe não atingir a nota máxima em Tempo, a Aliança perde 10 pontos de Dano Base."),
+      ability(2, "Asas de Sombras", "CONCEITO", "CUT", 50, "Se mais de uma equipe tirar Parcial ou Ausente em Paradigma ou Características, o dano extra dela é cortado pela metade.", { threshold: 2, scope: "ALLIANCE", min_count: 2 }),
+      ability(3, "Enxame Noturno", "PERGUNTAS", "PENALTY", 10, "A cada duas perguntas erradas, a Aliança perde 10 pontos de Dano Base.", { every: 2 }),
+    ],
+  },
+  {
+    id: 2, name: "Rei Rato", max_hp: 150, abilities: [
+      ability(4, "Olhar Hipnótico", "TEMPO", "PENALTY", 10, "Se a equipe não atingir a nota máxima em Tempo, a Aliança perde 10 pontos de Dano Base."),
+      ability(5, "Asas de Sombras", "CONCEITO", "CUT", 50, "Se ao menos uma equipe tirar Parcial ou Ausente em Paradigma ou Características, o dano extra dela é cortado pela metade.", { threshold: 2, scope: "ALLIANCE", min_count: 1 }),
+      ability(6, "Enxame Noturno", "PERGUNTAS", "PENALTY", 7, "A cada pergunta errada, a Aliança perde 7 pontos de Dano Base."),
+    ],
+  },
+  {
+    id: 3, name: "Leshy", max_hp: 130, abilities: [
+      ability(7, "Raízes do Passado", "FUNDAMENTOS", "HEAL", 5, "Se a equipe tirar menos que a nota máxima em Histórico ou Paradigma, Leshy ganha imediatamente +5 PV."),
+      ability(8, "Esporos Confusos", "DEMONSTRACAO", "DISADV", 50, "Sem a nota máxima em Principais Usos ou código, o dano extra dessa equipe é reduzido em 50% (desvantagem)."),
+      ability(9, "Fungo do Dreno", "PERGUNTAS", "HEAL", 5, "A cada pergunta errada na Fase 2, Leshy recupera 5 PV."),
+    ],
+  },
+  {
+    id: 4, name: "A Sombra Espreitadora", max_hp: 130, abilities: [
+      ability(10, "Dreno de Vitalidade", "FUNDAMENTOS", "HEAL", 5, "Se a equipe tirar menos que a nota máxima em Histórico ou Paradigma, a Sombra recupera +5 PV."),
+      ability(11, "Emboscada nas Sombras", "DEMONSTRACAO", "CUT", 50, "Sem a nota máxima em Principais Usos ou código, o dano extra dessa equipe é cortado pela metade."),
+      ability(12, "Ataque do Saqueador", "PERGUNTAS", "DRAIN", 5, "A cada pergunta errada, drena 5 de Dano Base da Aliança e soma ao próprio HP."),
+    ],
+  },
+  {
+    id: 5, name: "O Colecionador de Ossos", max_hp: 130, abilities: [
+      ability(13, "Sopro de Ácido", "GERAL", "PENALTY", 5, "Se a média dos critérios ficar abaixo de Satisfatório, a Aliança perde 5 pontos de Dano Base.", { mode: "AVERAGE", threshold: 1 }),
+      ability(14, "Rajada de Vento", "TEMPO", "DISADV", 50, "Se a equipe não atingir a nota máxima em Tempo, seus dados extras de dano são reduzidos em 50% (desvantagem)."),
+      ability(15, "Rugido do Medo", "PERGUNTAS", "PENALTY", 10, "A cada pergunta errada, a Aliança perde 10 pontos de Dano Base."),
+    ],
+  },
+  {
+    id: 6, name: "O Colecionador de Faces", max_hp: 130, abilities: [
+      ability(16, "Máscara da Confusão", "GERAL", "PENALTY", 5, "Com notas muito variadas (2 níveis ou mais de diferença), a Aliança perde 5 pontos de Dano Base.", { mode: "SPREAD", threshold: 2 }),
+      ability(17, "Máscara da Discórdia", "SUPORTE", "PR_COST", 2, "Habilidades de suporte custam 2 PR a mais (informativo: a raid ainda não usa o sistema de PR)."),
+      ability(18, "Máscara do Silêncio", "PERGUNTAS", "PENALTY", 5, "A cada pergunta errada, a Aliança perde 5 pontos de Dano Base."),
+    ],
+  },
+  {
+    id: 7, name: "O Mago Corrompido", max_hp: 200, abilities: [
+      ability(19, "Distorção Temporal", "TEMPO", "DISADV", 50, "Se a média de Tempo das equipes ficar abaixo da nota máxima, todas afetadas sofrem desvantagem no dano extra.", { scope: "ALLIANCE", min_count: 1 }),
+      ability(20, "Cegueira das Sombras", "CONCEITO", "DISADV", 50, "Sem a nota máxima em Paradigma ou Características, o dano extra da equipe é reduzido em 50%."),
+      ability(21, "Aniquilação da Alma", "PERGUNTAS", "DRAIN", 5, "A cada pergunta errada, drena 5 de Dano Base e soma ao próprio HP."),
+    ],
+  },
 ];
 
 /** Equipes que o `start` registra (o back-end registra todos os grupos ativos). */
@@ -78,8 +167,9 @@ function seed(): MockArena {
         id: 1,
         name: "Rodada 1",
         status: "CONFIG",
-        hp: boss.max_hp,
-        max_hp: boss.max_hp,
+        // PV da raid (escala de arena); o PV do chefe no catálogo é identidade.
+        hp: 15000,
+        max_hp: 15000,
         turn: 0,
         level: 1,
         multiplier: 1.5,
@@ -204,6 +294,127 @@ function defaultPerformance(groupId: number): number {
   return 40 + ((groupId * 17) % 45);
 }
 
+/** Desempenho derivado das notas (fórmula do front, ignora Tempo — ADR-017). */
+function derivedPerformance(criteria: Record<string, number>): number {
+  const total = CRITERIA_KEYS.filter((key) => key !== "tempo")
+    .reduce((sum, key) => sum + criteria[key], 0);
+  const grade = (total * 10) / 18;
+  return Math.max(0, Math.min(10, grade)) * 100;
+}
+
+/** Qual gatilho observa quais critérios (espelha `TRIGGER_CRITERIA`). */
+const TRIGGER_CRITERIA: Record<string, string[]> = {
+  TEMPO: ["tempo"],
+  CONCEITO: ["paradigma", "caracteristicas"],
+  FUNDAMENTOS: ["historico", "paradigma"],
+  DEMONSTRACAO: ["usos", "codigo"],
+  GERAL: [...CRITERIA_KEYS],
+  SUPORTE: [],
+  PERGUNTAS: [],
+};
+
+/** A condição da habilidade vale para essas notas? (espelha `affected`). */
+function affected(ability: MockAbility, criteria: Record<string, number> | null): boolean {
+  if (!criteria) return false;
+  const keys = TRIGGER_CRITERIA[ability.trigger] ?? [];
+  if (keys.length === 0) return false;
+  const scores = keys.map((key) => criteria[key]).filter((score) => typeof score === "number");
+  if (scores.length === 0) return false;
+  if (ability.mode === "AVERAGE") {
+    return scores.reduce((sum, score) => sum + score, 0) / scores.length < ability.threshold;
+  }
+  if (ability.mode === "SPREAD") {
+    return Math.max(...scores) - Math.min(...scores) >= ability.threshold;
+  }
+  return scores.some((score) => score < ability.threshold);
+}
+
+const EXECUTABLE = new Set(["PENALTY", "HEAL", "DRAIN", "CUT", "DISADV"]);
+
+/** Aplica o efeito no estado; devolve a mensagem do log (ou `null`). */
+function applyAbility(round: MockRound, team: TeamData, ability: MockAbility): string | null {
+  if (!EXECUTABLE.has(ability.effect)) return null; // ex.: PR_COST (informativo)
+  const value = ability.value;
+  if (value <= 0) return null;
+  switch (ability.effect) {
+    case "PENALTY": {
+      const applied = Math.min(team.base_damage, value);
+      team.base_damage -= applied;
+      return `${ability.name}: a equipe perdeu ${applied} de Dano Base!`;
+    }
+    case "HEAL": {
+      const before = round.hp;
+      round.hp = Math.min(round.max_hp, round.hp + value);
+      return `${ability.name}: o chefe recuperou ${round.hp - before} PV!`;
+    }
+    case "DRAIN": {
+      const applied = Math.min(team.base_damage, value);
+      team.base_damage -= applied;
+      const before = round.hp;
+      round.hp = Math.min(round.max_hp, round.hp + applied);
+      return `${ability.name}: drenou ${applied} de Dano Base e o chefe recuperou ${round.hp - before} PV!`;
+    }
+    case "CUT":
+    case "DISADV": {
+      const cut = Math.min(1, value / 100);
+      // O corte mais forte vence (não multiplica entre si).
+      team.damage_factor = Math.min(team.damage_factor, 1 - cut);
+      return `${ability.name}: dano de ataque da equipe cortado em ${value}%!`;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Avalia os gatilhos por critério no registro do desempenho (com notas). */
+function evaluateCriteriaAbilities(arena: MockArena, round: MockRound, team: TeamData): void {
+  if (!team.criteria) return;
+  for (const ability of round.boss.abilities) {
+    if (!(TRIGGER_CRITERIA[ability.trigger]?.length)) continue; // PERGUNTAS/SUPORTE
+    let fires: boolean;
+    if (ability.scope === "ALLIANCE") {
+      const count = Object.values(round.teams).filter(
+        (other) => other.criteria && affected(ability, other.criteria),
+      ).length;
+      fires = affected(ability, team.criteria) && count >= Math.max(1, ability.min_count);
+    } else {
+      fires = affected(ability, team.criteria);
+    }
+    if (!fires) continue;
+    const message = applyAbility(round, team, ability);
+    if (message !== null) logEvent(arena, round, "ABILITY", "BOS", team.group_id, ability.value, message);
+  }
+}
+
+/** Avalia os gatilhos "Perguntas" a cada `every` erros da equipe. */
+function evaluateQuestionAbilities(arena: MockArena, round: MockRound, team: TeamData): void {
+  for (const ability of round.boss.abilities) {
+    if (ability.trigger !== "PERGUNTAS" || team.wrong_answers <= 0) continue;
+    if (team.wrong_answers % Math.max(1, ability.every) !== 0) continue;
+    const message = applyAbility(round, team, ability);
+    if (message !== null) logEvent(arena, round, "ABILITY", "BOS", team.group_id, ability.value, message);
+  }
+}
+
+/** Valida as 7 notas da rubric; devolve o erro (string) ou o mapa de notas. */
+function validateCriteria(raw: unknown): string | Record<string, number> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return "Notas inválidas.";
+  const obj = raw as Record<string, unknown>;
+  const missing = CRITERIA_KEYS.filter((key) => !(key in obj));
+  if (missing.length) return `Notas incompletas: faltam ${missing.join(", ")}.`;
+  const extra = Object.keys(obj).filter((key) => !CRITERIA_KEYS.includes(key as (typeof CRITERIA_KEYS)[number]));
+  if (extra.length) return `Critérios desconhecidos: ${extra.join(", ")}.`;
+  const out: Record<string, number> = {};
+  for (const key of CRITERIA_KEYS) {
+    const score = Number(obj[key]);
+    if (!Number.isInteger(score) || ![-1, 1, 3].includes(score)) {
+      return `Nota inválida em '${key}': use 3 (Bom), 1 (Parcial) ou -1.`;
+    }
+    out[key] = score;
+  }
+  return out;
+}
+
 /** Aplica a ação; devolve a mensagem de erro (400) ou `null` em sucesso. */
 function applyAction(arena: MockArena, round: MockRound, action: string, body: Record<string, unknown>): string | null {
   const notRunning = round.status === "RUNNING" ? null : "A batalha não está em andamento.";
@@ -218,6 +429,9 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
           battle_damage: 0,
           retaliation_loss: 0,
           manual_adjustment: 0,
+          criteria: null,
+          wrong_answers: 0,
+          damage_factor: 1,
         };
       }
       round.status = "RUNNING";
@@ -253,12 +467,19 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
       round.turn += 1;
       if (!correct) {
         logEvent(arena, round, "DAMAGE", "TEAM", groupId, 0, "A equipe errou o ataque.");
+        team.wrong_answers += 1;
+        evaluateQuestionAbilities(arena, round, team);
+        checkVictory(arena, round);
         return null;
       }
-      team.battle_damage += points;
-      round.hp = Math.max(0, round.hp - points);
-      logEvent(arena, round, "DAMAGE", "TEAM", groupId, points, `A equipe causou ${points} de dano!`);
-      const retaliation = Math.round(points * round.retaliation_ratio);
+      // Acerto: dano com o corte das habilidades (damage_factor).
+      const damage = team.damage_factor < 1
+        ? Math.max(0, Math.round(points * team.damage_factor))
+        : points;
+      team.battle_damage += damage;
+      round.hp = Math.max(0, round.hp - damage);
+      logEvent(arena, round, "DAMAGE", "TEAM", groupId, damage, `A equipe causou ${damage} de dano!`);
+      const retaliation = Math.round(damage * round.retaliation_ratio);
       if (retaliation > 0) {
         team.retaliation_loss += retaliation;
         logEvent(arena, round, "RETALIATION", "BOS", groupId, retaliation, `O chefe retaliou! A equipe perdeu ${retaliation} pontos!`);
@@ -268,20 +489,37 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
     }
     case "apply-performance": {
       if (notRunning) return notRunning;
-      const only =
-        body.group_id != null && body.group_id !== ""
-          ? [Number(body.group_id)]
-          : Object.values(round.teams).map((team) => team.group_id);
-      for (const groupId of only) {
+      const groupProvided = body.group_id != null && body.group_id !== "";
+      let criteria: Record<string, number> | null = null;
+      if (body.criteria != null) {
+        if (!groupProvided) return "Notas por critério exigem group_id (registro por equipe).";
+        const validated = validateCriteria(body.criteria);
+        if (typeof validated === "string") return validated;
+        criteria = validated;
+      }
+      const targets = groupProvided
+        ? [Number(body.group_id)]
+        : Object.values(round.teams).map((team) => team.group_id);
+      for (const groupId of targets) {
         const team = round.teams[String(groupId)];
         if (!team) return "Equipe não registrada nesta batalha.";
-        const performance = Number(body.performance) || defaultPerformance(groupId);
+        if (criteria) {
+          if (team.criteria) return "Desempenho já registrado para esta equipe.";
+          team.criteria = { ...criteria };
+        }
+        const performance = criteria != null && body.performance == null
+          ? derivedPerformance(criteria)
+          : Number(body.performance) || defaultPerformance(groupId);
         const damage = Math.round(performance * round.multiplier);
-        if (damage <= 0) continue;
-        team.base_damage += damage;
-        round.hp = Math.max(0, round.hp - damage);
+        if (damage > 0) {
+          team.base_damage += damage;
+          round.hp = Math.max(0, round.hp - damage);
+          logEvent(arena, round, "DAMAGE", "TEAM", groupId, damage, `A equipe causou ${damage} de dano (desempenho).`);
+        } else if (criteria == null) {
+          continue;
+        }
         round.turn += 1;
-        logEvent(arena, round, "DAMAGE", "TEAM", groupId, damage, `A equipe causou ${damage} de dano (desempenho).`);
+        if (criteria != null) evaluateCriteriaAbilities(arena, round, team);
         checkVictory(arena, round);
         if (round.status === "ENDED") break;
       }
@@ -373,7 +611,7 @@ export const arenaHandlers = [
         multiplier: Number(body.multiplier) || 1.5,
         retaliation_ratio: Number(body.retaliation_ratio ?? 0.25),
         reward_factor: Number(body.reward_factor ?? 1),
-        boss: { id: boss.id, name: boss.name, max_hp: boss.max_hp },
+        boss: { ...boss },
         teams: {},
         events: [],
         rewards_credited: false,
