@@ -2,11 +2,11 @@ import { LandingPage } from "@/components/landing-page";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Debuggers & Developers — Guilda das Incursões",
+  title: "Debuggers & Developers — D&D",
   description:
     "Uma jornada entre código e aventura. Consulte a agenda pública de incursões, grupos e linguagens de programação.",
   openGraph: {
-    title: "Debuggers & Developers — Guilda das Incursões",
+    title: "Debuggers & Developers — D&D",
     description:
       "Reúna sua guilda e acompanhe as incursões. Agenda de grupos e missões aberta a todos.",
     type: "website",

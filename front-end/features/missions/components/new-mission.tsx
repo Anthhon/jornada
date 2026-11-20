@@ -5,7 +5,7 @@ import { Field, selectClass, SubmitButton } from "@/features/journey/components/
 import { useValidatedForm } from "@/hooks/use-validated-form";
 import { fakeSave } from "@/mocks/latency";
 import { useJornada } from "@/stores/journey-store";
-import { Swords } from "lucide-react";
+import { Crest } from "@/features/journey/components/crest";
 import { toast } from "sonner";
 
 export function NewMission({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
@@ -74,7 +74,7 @@ export function NewMission({ open, onOpenChange }: { open: boolean; onOpenChange
               </div>
             ))}
           </div>
-          <SubmitButton loading={loading}><Swords /> Registrar missão</SubmitButton>
+          <SubmitButton loading={loading}><Crest className="h-4 w-4" /> Registrar missão</SubmitButton>
         </form>
       </SheetContent>
     </Sheet>

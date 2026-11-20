@@ -10,7 +10,7 @@ import { Confirm, EmptyState, PageHeader, PageState, Scroll } from "@/features/j
 import { useSimulatedLoad } from "@/hooks/use-simulated-load";
 import { useJornada } from "@/stores/journey-store";
 import type { Student } from "@/features/students";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, Trash2 } from "@/components/icons/rpg-icons";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { fakeSave } from "@/mocks/latency";
 import { newId, useJornada } from "@/stores/journey-store";
 import type { Question } from "@/features/questions";
-import { CheckCircle2, Circle, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Circle, Plus, Trash2 } from "@/components/icons/rpg-icons";
 import { toast } from "sonner";
 
 export function QuestionForm({ initial, onDone }: { initial: Question | null; onDone: () => void }) {

@@ -13,18 +13,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { IncursionStatus } from "@/features/missions";
-import { AlertTriangle, Compass, Gem, Loader2, Lock, RefreshCw } from "lucide-react";
+import { AlertTriangle, Compass, CornerOrnament, Gem, Loader2, Lock, RefreshCw } from "@/components/icons/rpg-icons";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /* ---------- Ornamentos e cartões ---------- */
 
 function Corner({ className }: { className: string }) {
   return (
-    <svg viewBox="0 0 16 16" className={cn("pointer-events-none absolute h-4 w-4 text-accent-foreground/60", className)} aria-hidden>
-      <path d="M1 9 V1 H9" fill="none" stroke="currentColor" strokeWidth="1" />
-      <path d="M3.5 3.5 L6 6" stroke="currentColor" strokeWidth="1" />
-      <circle cx="3.5" cy="3.5" r="1" fill="currentColor" />
-    </svg>
+    <CornerOrnament className={cn("pointer-events-none absolute h-4 w-4 opacity-70", className)} />
   );
 }
 
@@ -93,7 +89,7 @@ export function Gems({ value, max = 5 }: { value: number; max?: number }) {
   return (
     <div className="flex items-center gap-1" aria-label={`${value} de ${max} pontos de recurso`}>
       {Array.from({ length: max }, (_, i) => (
-        <Gem key={i} className={cn("h-4 w-4", i < value ? "fill-primary-hover text-accent-foreground" : "text-border-strong/40")} strokeWidth={1.5} />
+        <Gem key={i} className={cn("h-4 w-4", i < value ? "opacity-100" : "opacity-30 grayscale")} />
       ))}
     </div>
   );
@@ -133,10 +129,10 @@ export function HpBar({ hp, max }: { hp: number; max: number }) {
 
 /* ---------- Estados ---------- */
 
-export function LoadingState({ label = "Consultando os pergaminhos…" }: { label?: string }) {
+export function LoadingState({ label = "Consultando os pergaminhos…", fullScreen = false }: { label?: string; fullScreen?: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-      <Loader2 className="h-6 w-6 animate-spin" />
+    <div role="status" aria-live="polite" className={cn("flex w-full flex-1 flex-col items-center justify-center gap-3 px-4 py-8 text-center text-muted-foreground", fullScreen ? "min-h-svh" : "min-h-48")}>
+      <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
       <p className="font-reading">{label}</p>
     </div>
   );

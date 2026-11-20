@@ -9,7 +9,7 @@ import { useSimulatedLoad } from "@/hooks/use-simulated-load";
 import { formatDate } from "@/lib/date-format";
 import { Link } from "@/lib/router-compat";
 import { useJornada } from "@/stores/journey-store";
-import { CalendarDays, Plus } from "lucide-react";
+import { CalendarDays, Plus } from "@/components/icons/rpg-icons";
 import { useState } from "react";
 
 

@@ -8,14 +8,14 @@ import {
   Search,
   Shield,
   Skull,
-  Swords,
   X,
-} from "lucide-react";
+} from "@/components/icons/rpg-icons";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { groups, missions } from "@/mocks/landing-agenda";
+import { Crest } from "@/features/journey/components/crest";
 
 const groupTones = [
   "bg-accent/60",
@@ -39,7 +39,7 @@ export function PublicHeader() {
   return (
     <>
       <header className="guild-public-header relative z-30">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-4 md:px-10">
+        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-3 px-5 py-4 md:px-8 xl:px-10 2xl:px-12">
           <button
             type="button"
             className="inline-flex h-11 w-11 items-center justify-center rounded-md transition-colors hover:bg-guild-green"
@@ -68,23 +68,23 @@ export function PublicHeader() {
           onClick={() => setOpen(false)}
         />
         <aside className="guild-menu-panel absolute inset-y-0 left-0 flex w-72 max-w-full flex-col border-r border-guild-gold bg-guild-stone p-6 text-guild-ink shadow-2xl">
-          <div className="absolute left-6 right-6 top-4 flex h-10 items-center justify-center" aria-label="Debuggers e Developers">
-            <span className="font-display text-sm tracking-wide text-guild-gold">Debuggers &amp; Developers</span>
+          <div className="flex min-h-10 items-center justify-between gap-2">
+            <span className="min-w-0 font-display text-sm leading-tight tracking-wide text-guild-gold">Debuggers &amp; Developers</span>
+            <button
+              type="button"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-guild-ink transition-colors hover:text-guild-gold"
+              aria-label="Fechar menu"
+              onClick={() => setOpen(false)}
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            type="button"
-            className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-guild-green"
-            aria-label="Fechar menu"
-            onClick={() => setOpen(false)}
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <nav className="mt-14 flex flex-col gap-2" aria-label="Menu público">
+          <nav className="mt-6 flex flex-col gap-2" aria-label="Menu público">
             <Link href="/" className="flex h-11 items-center gap-3 rounded-md px-3 hover:bg-guild-green" onClick={() => setOpen(false)}>
               <Castle className="h-4 w-4" /> Início
             </Link>
             <Link href="/login" className="flex h-11 items-center gap-3 rounded-md px-3 hover:bg-guild-green" onClick={() => setOpen(false)}>
-              <Swords className="h-4 w-4" /> Área do professor
+              <Crest className="h-4 w-4" /> Área do professor
             </Link>
             <a href="#agenda" className="flex h-11 items-center gap-3 rounded-md px-3 hover:bg-guild-green" onClick={() => setOpen(false)}>
               <CalendarDays className="h-4 w-4" /> Agenda de incursões
@@ -135,7 +135,7 @@ function PublicAgenda() {
   }, [query]);
 
   return (
-    <section id="agenda" className="mx-auto w-full max-w-7xl px-5 py-10 md:px-10 md:py-12">
+    <section id="agenda" className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-8 md:py-12 xl:px-10 2xl:px-12">
       <div className="mb-8">
         <h2 className="text-[1.85rem] leading-tight text-foreground">Agenda de incursões</h2>
         <p className="mt-1.5 max-w-xl font-reading text-muted-foreground">
@@ -247,7 +247,7 @@ export function LandingPage() {
           <div className="guild-hero-content relative z-10 mx-auto flex max-w-3xl flex-col items-center px-5 text-center">
             <div className="mb-5 flex items-center gap-4 text-guild-gold">
               <span className="h-px w-12 bg-guild-gold/60" />
-              <Swords className="h-7 w-7" />
+              <Crest className="h-7 w-7" />
               <span className="h-px w-12 bg-guild-gold/60" />
             </div>
             <p className="mb-4 font-display text-xs uppercase tracking-[0.24em] text-guild-gold">
@@ -272,10 +272,10 @@ export function LandingPage() {
             </div>
           </div>
         </section>
-        <section id="herois" className="mx-auto w-full max-w-7xl px-5 py-10 md:px-10 md:py-12">
+        <section id="herois" className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-8 md:py-12 xl:px-10 2xl:px-12">
           <h2 className="text-[1.85rem] leading-tight text-foreground">Heróis</h2>
         </section>
-        <section id="bosses" className="mx-auto w-full max-w-7xl px-5 py-10 md:px-10 md:py-12">
+        <section id="bosses" className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-8 md:py-12 xl:px-10 2xl:px-12">
           <h2 className="text-[1.85rem] leading-tight text-foreground">Bosses</h2>
         </section>
         <div className="guild-agenda-band">

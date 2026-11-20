@@ -19,9 +19,40 @@
 Forms use React Hook Form for values, errors, and submission status. The shared
 `useValidatedForm` hook maps existing cross-field domain validation to RHF root
 errors. Dialog visibility, selection, animation, and search remain local UI state.
-Authentication and `/users` connect to Django. Other domain screens still use
-local demonstration state because their backend endpoints do not exist yet.
+Authentication, the current-user profile and the restricted Admin account list
+connect to Django. Other domain screens still use
+local demonstration state while integration with their backend endpoints is pending.
 See [API integration](./API-INTEGRATION.md) for configuration, tests, and remaining work.
+
+## Sidebar
+
+All interface icons come from `components/icons/rpg-icons.tsx`: inline SVGs on
+a 20×20 pixel grid, with the golden apple's ink, gold, shade and highlight palette.
+They accept SVG props, refs and Tailwind sizing/animation classes. `Crest` wraps
+the shared golden apple; notifications and card ornaments use the same family.
+Empty resource gems use grayscale/opacity instead of color overrides so their
+state remains visible with the fixed sprite palette. Decorative icons are hidden
+from assistive technology; standalone icons can receive an `aria-label`.
+
+`components/layout/teacher-shell.tsx` composes the existing desktop sidebar and
+mobile sheet. Sections, links, badge keys and role visibility rules live in
+`sidebar-config.ts`; `sidebar-navigation.tsx` renders semantic lists, active
+routes and collapsed tooltips. Only section labels use the pixel font.
+
+The user card opens `sidebar-user-menu.tsx` (Profile, Theme, Exit). The menu
+supports arrow keys, Home/End, Escape, Tab and outside clicks. Ctrl+B collapses
+the sidebar (or toggles the mobile sheet), except while typing in editable fields.
+Themes are stored in `localStorage` under `jornada-theme`.
+
+`TeacherShell` accepts optional `counts={{ agenda: 2, missions: 5 }}`. When omitted,
+badges count unfinished incursions for Agenda and all incursions for Missions;
+pass `counts={{}}` to hide them. `/schedule` embeds the agenda inside this shell;
+the public `/agenda` stays available to visitors.
+
+Professors are the administrators in this project. The sidebar and direct visits
+to `/users` use `role: "teacher"` returned by `/api/me/`; students do not get the
+Admin section. There is no separate granular permission or superuser requirement.
+Django remains responsible for authorization on the API itself.
 
 This project uses **Feature-Sliced Design (FSD)** adapted for the **Next.js App Router**. It is domain-oriented: code is grouped by the capability it delivers rather than by generic technical folders.
 

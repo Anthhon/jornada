@@ -7,7 +7,7 @@ import { useValidatedForm } from "@/hooks/use-validated-form";
 import { fakeSave } from "@/mocks/latency";
 import { newId, useJornada } from "@/stores/journey-store";
 import type { Boss, BossSkill, BossTrigger } from "@/features/bosses";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "@/components/icons/rpg-icons";
 import { toast } from "sonner";
 import { TRIGGERS } from "../constants/bosses-page";
 
