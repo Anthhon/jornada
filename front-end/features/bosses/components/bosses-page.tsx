@@ -7,7 +7,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { Confirm, EmptyState, PageHeader, PageState } from "@/features/journey/components/ui";
+import { Confirm, EmptyState, PageHeader, PageState, Scroll } from "@/features/journey/components/ui";
 import { useCatalogLoad } from "@/hooks/use-catalog-load";
 import { cn } from "@/lib/utils";
 import { useJornada } from "@/stores/journey-store";
@@ -39,7 +39,8 @@ function skillParams(s: BossSkill): string {
   return parts.join(" · ");
 }
 
-/** Cartão do chefe — visual forte no card de raid da imagem (PV vermelho, emblema, arte). */
+/** Cartão do chefe — composição do card de raid da imagem (PV vermelho,
+ * emblema, arte) no tema claro/parchment do site. */
 function BossCard({
   boss,
   onEdit,
@@ -54,56 +55,49 @@ function BossCard({
   const [failed, setFailed] = useState(false);
 
   return (
-    <article
-      className={cn(
-        "flex flex-col overflow-hidden rounded-xl border border-border-strong/50 bg-guild-stone text-guild-ink shadow-[var(--guild-shadow)]",
-        !boss.active && "opacity-70",
-      )}
-    >
+    <Scroll className={cn("flex flex-col", !boss.active && "opacity-70")}>
       {/* Identidade (emblema + nome + selo), como no card da raid */}
-      <div className="flex items-start gap-3 px-4 pt-4">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-destructive/60 bg-destructive/15">
+      <div className="flex items-start gap-3">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-destructive/50 bg-destructive/10">
           <Skull className="h-6 w-6 text-destructive" strokeWidth={1.5} aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[0.65rem] uppercase tracking-widest text-guild-ink/60">
+          <p className="text-[0.65rem] uppercase tracking-widest text-muted-foreground">
             {boss.active ? "Chefe da jornada" : "Chefe fora do sorteio"}
           </p>
-          <h3 className="truncate font-display text-xl text-white">{boss.name}</h3>
-          <p className="truncate text-xs text-guild-ink/70">{boss.specialty}</p>
+          <h3 className="truncate font-display text-xl text-foreground">{boss.name}</h3>
+          <p className="truncate text-xs text-muted-foreground">{boss.specialty}</p>
         </div>
         <div className="flex shrink-0 gap-0.5">
           <Button
             variant="ghost" size="icon"
-            className="text-guild-ink/70 hover:bg-white/10 hover:text-white"
             aria-label={`Editar ${boss.name}`} onClick={() => onEdit(boss)}
           ><Pencil /></Button>
           <Button
             variant="ghost" size="icon"
-            className="text-guild-ink/70 hover:bg-white/10 hover:text-white"
             aria-label={`Excluir ${boss.name}`} onClick={() => onDelete(boss)}
           ><Trash2 /></Button>
         </div>
       </div>
 
       {/* Barra de PV vermelha + chip (padrão da imagem) */}
-      <div className="flex items-center gap-2 px-4 pt-3">
-        <span className="rounded bg-black/50 px-2 py-0.5 font-display text-[0.7rem] font-semibold uppercase tracking-wider text-white/90">
+      <div className="mt-3 flex items-center gap-2">
+        <span className="rounded bg-foreground px-2 py-0.5 font-display text-[0.7rem] font-semibold uppercase tracking-wider text-background">
           PV
         </span>
         <div
-          className="h-4 flex-1 overflow-hidden rounded-full border border-black/40 bg-black/50"
+          className="h-4 flex-1 overflow-hidden rounded-full border border-border bg-muted"
           role="meter" aria-valuenow={boss.hp} aria-valuemax={boss.hp} aria-valuemin={0}
         >
           <div className="h-full w-full rounded-full bg-gradient-to-r from-destructive/75 via-destructive to-destructive/90" />
         </div>
-        <span className="font-display text-xs font-semibold text-white/90">
+        <span className="font-display text-xs font-semibold text-foreground">
           {boss.hp} / {boss.hp}
         </span>
       </div>
 
       {/* Arte do chefe */}
-      <div className="relative mt-3 h-44 w-full bg-black/30">
+      <div className="relative mt-3 h-44 w-full overflow-hidden rounded-md border border-border bg-muted">
         {boss.image && !failed ? (
           <Image
             src={boss.image} alt={boss.name} fill unoptimized
@@ -111,39 +105,39 @@ function BossCard({
           />
         ) : (
           <div className="flex h-full items-center justify-center" aria-hidden>
-            <Skull className="h-14 w-14 text-white/20" strokeWidth={1} />
+            <Skull className="h-14 w-14 text-muted-foreground/40" strokeWidth={1} />
           </div>
         )}
       </div>
 
       {/* Descrição + habilidades + sorteio */}
-      <div className="flex flex-1 flex-col gap-3 px-4 py-4">
-        <p className="font-reading text-sm text-guild-ink/80">{boss.description}</p>
+      <div className="mt-3 flex flex-1 flex-col gap-3">
+        <p className="font-reading text-sm text-foreground">{boss.description}</p>
 
-        <ul className="space-y-2 border-t border-white/10 pt-3">
+        <ul className="space-y-2 border-t border-border pt-3">
           {boss.skills.map((s, i) => (
-            <li key={i} className="rounded-md border border-white/10 bg-black/25 px-3 py-2">
+            <li key={i} className="rounded-md border border-border/60 bg-background px-3 py-2">
               <div className="flex flex-wrap items-center gap-1.5">
-                <p className="text-sm font-medium text-white">{s.name}</p>
-                <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[0.65rem] text-guild-ink/80">
+                <p className="text-sm font-medium text-foreground">{s.name}</p>
+                <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-[0.65rem] text-muted-foreground">
                   {TRIGGER_LABELS[s.trigger]}
                 </span>
-                <span className="rounded-full border border-destructive/40 bg-destructive/15 px-2 py-0.5 text-[0.65rem] text-destructive">
+                <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[0.65rem] text-destructive">
                   {EFFECT_SHORT_LABELS[s.effect]}
                 </span>
               </div>
-              <p className="mt-1 font-reading text-xs leading-relaxed text-guild-ink/70">{s.description}</p>
-              <p className="mt-1 text-[0.65rem] uppercase tracking-wide text-guild-ink/50">{skillParams(s)}</p>
+              <p className="mt-1 font-reading text-xs leading-relaxed text-muted-foreground">{s.description}</p>
+              <p className="mt-1 text-[0.65rem] uppercase tracking-wide text-muted-foreground/70">{skillParams(s)}</p>
             </li>
           ))}
         </ul>
 
-        <label className="mt-auto flex items-center justify-between rounded-md border border-white/10 bg-black/25 px-3 py-2 text-sm">
+        <label className="mt-auto flex items-center justify-between rounded-md border border-border/60 bg-background px-3 py-2 text-sm text-foreground">
           <span>{boss.active ? "Ativo no sorteio" : "Fora do sorteio"}</span>
           <Switch checked={boss.active} onCheckedChange={(c) => onToggle(boss, c)} />
         </label>
       </div>
-    </article>
+    </Scroll>
   );
 }
 
