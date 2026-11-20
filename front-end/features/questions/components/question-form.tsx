@@ -5,17 +5,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Field, SubmitButton } from "@/features/journey/components/ui";
 import { useValidatedForm } from "@/hooks/use-validated-form";
 import { cn } from "@/lib/utils";
-import { fakeSave } from "@/mocks/latency";
-import { newId, useJornada } from "@/stores/journey-store";
+import { upsertQuestion } from "@/lib/catalog-mutations";
+import { newId } from "@/stores/journey-store";
 import type { Question } from "@/features/questions";
 import { CheckCircle2, Circle, Plus, Trash2 } from "@/components/icons/rpg-icons";
 import { toast } from "sonner";
 
 export function QuestionForm({ initial, onDone }: { initial: Question | null; onDone: () => void }) {
-  const { upsertQuestion } = useJornada();
-  const form = useValidatedForm({ statement: initial?.statement ?? "", options: initial?.options ?? [{ text: "", correct: true }, { text: "", correct: false }] });
+
+  const form = useValidatedForm({ language: initial?.language ?? "", statement: initial?.statement ?? "", options: initial?.options ?? [{ text: "", correct: true }, { text: "", correct: false }] });
   const { handleSubmit, formState: { isSubmitting: loading }, validationErrors: err, setValidationErrors: setErr } = form;
   const statement = form.watch("statement");
+  const language = form.watch("language");
   const setStatement = (next: typeof statement) => form.setValue("statement", next, { shouldDirty: true });
   const options = form.watch("options");
   const setOptions = (next: typeof options) => form.setValue("options", next, { shouldDirty: true });
@@ -28,14 +29,14 @@ export function QuestionForm({ initial, onDone }: { initial: Question | null; on
     else if (!filled.some((o) => o.correct)) x["options"] = "Marque ao menos uma alternativa correta.";
     setErr(x);
     if (Object.keys(x).length) return;
-    await fakeSave();
-    upsertQuestion({ id: initial?.id ?? newId("q"), statement: statement.trim(), options: filled.map((o) => ({ ...o, text: o.text.trim() })) });
+    if (!await upsertQuestion({ id: initial?.id ?? newId("q"), statement: statement.trim(), language: language.trim(), options: filled.map((o) => ({ ...o, text: o.text.trim() })) })) return;
     toast.success("Pergunta salva.");
     onDone();
   }
 
   return (
     <form onSubmit={handleSubmit(submit)} className="mt-6 space-y-4" noValidate>
+      <Field label="Linguagem"><Input value={language} maxLength={100} onChange={(event) => form.setValue("language", event.target.value)} /></Field>
       <Field label="Enunciado" error={err["statement"]}><Textarea rows={3} value={statement} onChange={(e) => setStatement(e.target.value)} /></Field>
       <div className="space-y-2">
         <div className="flex items-center justify-between">

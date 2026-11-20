@@ -1,17 +1,19 @@
 "use client";
 
 import { BossForm } from "./boss-form";
+import { upsertBoss, removeBoss } from "@/lib/catalog-mutations";
+import Image from "next/image";
 
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { HpBar, PageHeader, PageState, Scroll } from "@/features/journey/components/ui";
-import { useSimulatedLoad } from "@/hooks/use-simulated-load";
+import { Confirm, EmptyState, HpBar, PageHeader, PageState, Scroll } from "@/features/journey/components/ui";
+import { useCatalogLoad } from "@/hooks/use-catalog-load";
 import { cn } from "@/lib/utils";
 import { useJornada } from "@/stores/journey-store";
 import type { Boss } from "@/features/bosses";
-import { Pencil, Plus, Skull } from "@/components/icons/rpg-icons";
+import { Pencil, Plus, Skull, Trash2 } from "@/components/icons/rpg-icons";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -19,16 +21,19 @@ import { toast } from "sonner";
 
 
 function Chefes() {
-  const { status, retry } = useSimulatedLoad();
-  const { bosses, upsertBoss } = useJornada();
+  const { status, retry } = useCatalogLoad();
+  const { bosses } = useJornada();
   const [editing, setEditing] = useState<Boss | "new" | null>(null);
+  const [deleting, setDeleting] = useState<Boss | null>(null);
 
   return (
     <PageState status={status} retry={retry}>
       <PageHeader title="Chefes" description="O chefe não ataca: pune os pontos fracos da apresentação. Só os ativos entram no sorteio." action={<Button onClick={() => setEditing("new")}><Plus /> Novo chefe</Button>} />
+      {bosses.length === 0 && <EmptyState title="Nenhum chefe cadastrado" hint="Cadastre o primeiro chefe." />}
       <div className="grid gap-6 md:grid-cols-2">
         {bosses.map((b) => (
           <Scroll key={b.id} className={cn("flex flex-col gap-4 p-6 transition-opacity", !b.active && "opacity-60")}>
+            {b.image && <BossPortrait src={b.image} name={b.name} />}
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-destructive/50 bg-destructive/10"><Skull className="h-5 w-5 text-destructive" strokeWidth={1.5} /></div>
@@ -37,7 +42,7 @@ function Chefes() {
                   <p className="text-xs text-muted-foreground">{b.specialty}</p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" aria-label={`Editar ${b.name}`} onClick={() => setEditing(b)}><Pencil /></Button>
+              <div className="flex"><Button variant="ghost" size="icon" aria-label={`Editar ${b.name}`} onClick={() => setEditing(b)}><Pencil /></Button><Button variant="ghost" size="icon" aria-label={`Excluir ${b.name}`} onClick={() => setDeleting(b)}><Trash2 /></Button></div>
             </div>
             <p className="font-reading text-sm">{b.description}</p>
             <HpBar hp={b.hp} max={b.hp} />
@@ -51,7 +56,7 @@ function Chefes() {
             </ul>
             <label className="mt-auto flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
               <span>{b.active ? "Ativo no sorteio" : "Fora do sorteio"}</span>
-              <Switch checked={b.active} onCheckedChange={(c) => { upsertBoss({ ...b, active: c }); toast.success(c ? `${b.name} entra no sorteio.` : `${b.name} sai do sorteio.`); }} />
+              <Switch checked={b.active} onCheckedChange={async (c) => { if (await upsertBoss({ ...b, active: c })) toast.success(c ? `${b.name} entra no sorteio.` : `${b.name} sai do sorteio.`); }} />
             </label>
           </Scroll>
         ))}
@@ -65,6 +70,7 @@ function Chefes() {
           {editing && <BossForm key={editing === "new" ? "n" : editing.id} initial={editing === "new" ? null : editing} onDone={() => setEditing(null)} />}
         </SheetContent>
       </Sheet>
+      <Confirm open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)} title="Excluir chefe?" description={deleting?.name ?? ""} confirmLabel="Excluir" destructive onConfirm={async () => { if (deleting && await removeBoss(deleting.id)) { toast.success("Chefe removido."); setDeleting(null); } }} />
     </PageState>
   );
 }
@@ -72,3 +78,7 @@ function Chefes() {
 
 
 export { Chefes as BossesPage };
+function BossPortrait({ src, name }: { src: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return failed ? <p role="status" className="text-sm text-muted-foreground">Imagem indisponível.</p> : <div className="relative h-48"><Image src={src} alt={name} fill unoptimized className="object-contain" onError={() => setFailed(true)} /></div>;
+}

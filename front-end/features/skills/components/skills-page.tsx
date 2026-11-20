@@ -1,13 +1,14 @@
 "use client";
 
 import { SkillForm } from "./skill-form";
+import { removeSkill } from "@/lib/catalog-mutations";
 
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SkillCard } from "@/features/journey/components/skill-card";
 import { Confirm, EmptyState, PageHeader, PageState } from "@/features/journey/components/ui";
-import { useSimulatedLoad } from "@/hooks/use-simulated-load";
+import { useCatalogLoad } from "@/hooks/use-catalog-load";
 import { useJornada } from "@/stores/journey-store";
 import type { Skill } from "@/features/skills";
 import { Pencil, Plus, Trash2 } from "@/components/icons/rpg-icons";
@@ -17,8 +18,8 @@ import { toast } from "sonner";
 
 
 function Habilidades() {
-  const { status, retry } = useSimulatedLoad();
-  const { skills, heroes, removeSkill } = useJornada();
+  const { status, retry } = useCatalogLoad();
+  const { skills, heroes } = useJornada();
   const [editing, setEditing] = useState<Skill | "new" | null>(null);
   const [del, setDel] = useState<Skill | null>(null);
   const owner = (id: string) => heroes.filter((h) => h.skillIds.includes(id)).map((h) => h.name).join(", ");
@@ -53,7 +54,7 @@ function Habilidades() {
         </SheetContent>
       </Sheet>
       <Confirm open={!!del} onOpenChange={(o) => !o && setDel(null)} title="Excluir habilidade?" description={`${del?.name} será removida do grimório e dos heróis.`} confirmLabel="Excluir" destructive
-        onConfirm={() => { if (del) { removeSkill(del.id); toast.success("Habilidade removida."); } setDel(null); }} />
+        onConfirm={async () => { if (del && await removeSkill(del.id)) { toast.success("Habilidade removida."); setDel(null); } }} />
     </PageState>
   );
 }

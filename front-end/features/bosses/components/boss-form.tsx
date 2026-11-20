@@ -4,18 +4,21 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, SubmitButton, selectClass } from "@/features/journey/components/ui";
 import { useValidatedForm } from "@/hooks/use-validated-form";
-import { fakeSave } from "@/mocks/latency";
-import { newId, useJornada } from "@/stores/journey-store";
+import { upsertBoss } from "@/lib/catalog-mutations";
+import { newId } from "@/stores/journey-store";
 import type { Boss, BossSkill, BossTrigger } from "@/features/bosses";
 import { Plus, Trash2 } from "@/components/icons/rpg-icons";
 import { toast } from "sonner";
 import { TRIGGERS } from "../constants/bosses-page";
+import { imageUrlSchema } from "../schemas/boss";
+import { useState } from "react";
 
 export function BossForm({ initial, onDone }: { initial: Boss | null; onDone: () => void }) {
-  const { upsertBoss } = useJornada();
+
   const form = useValidatedForm({ f: { name: initial?.name ?? "", hp: String(initial?.hp ?? 130), specialty: initial?.specialty ?? "", description: initial?.description ?? "" }, skills: (initial?.skills ?? [{ name: "", trigger: "Tempo", effect: "" }]) as BossSkill[] });
   const { handleSubmit, formState: { isSubmitting: loading }, validationErrors: err, setValidationErrors: setErr } = form;
   const f = form.watch("f");
+  const [image, setImage] = useState(initial?.image ?? "");
   const setF = (next: typeof f) => form.setValue("f", next, { shouldDirty: true });
   const skills = form.watch("skills");
   const setSkills = (next: typeof skills) => form.setValue("skills", next, { shouldDirty: true });
@@ -23,14 +26,14 @@ export function BossForm({ initial, onDone }: { initial: Boss | null; onDone: ()
   async function submit() {
     const x: Record<string, string> = {};
     if (!f.name.trim()) x["name"] = "Informe o nome.";
+    if (!imageUrlSchema.safeParse(image).success) x["image"] = "Use caminho local ou URL HTTPS.";
     const hp = Number(f.hp);
     if (!Number.isInteger(hp) || hp < 1) x["hp"] = "HP inteiro maior que zero.";
     if (skills.length === 0) x["skills"] = "Adicione ao menos uma habilidade.";
     skills.forEach((s, i) => { if (!s.name.trim() || !s.effect.trim()) x[`s${i}`] = "Nome e efeito são obrigatórios."; });
     setErr(x);
     if (Object.keys(x).length) return;
-    await fakeSave();
-    upsertBoss({ id: initial?.id ?? newId("b"), active: initial?.active ?? true, name: f.name.trim(), hp, specialty: f.specialty.trim(), description: f.description.trim(), skills });
+    if (!await upsertBoss({ id: initial?.id ?? newId("b"), active: initial?.active ?? true, name: f.name.trim(), hp, image, specialty: f.specialty.trim(), description: f.description.trim(), skills })) return;
     toast.success("Chefe salvo.");
     onDone();
   }
@@ -44,6 +47,7 @@ export function BossForm({ initial, onDone }: { initial: Boss | null; onDone: ()
         <Field label="HP" error={err["hp"]}><Input type="number" value={f.hp} onChange={(e) => setF({ ...f, hp: e.target.value })} /></Field>
       </div>
       <Field label="Especialidade"><Input value={f.specialty} onChange={(e) => setF({ ...f, specialty: e.target.value })} /></Field>
+      <Field label="Imagem (caminho local ou URL HTTPS)" error={err["image"]}><Input value={image} onChange={(event) => setImage(event.target.value)} placeholder="/personagens/chefe.jpg" /></Field>
       <Field label="Descrição"><Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
       <div className="space-y-3">
         <div className="flex items-center justify-between">

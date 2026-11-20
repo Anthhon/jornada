@@ -1,0 +1,3 @@
+import { z } from "zod";
+export const imageUrlSchema = z.string().refine((value) => !value || /^\/(?!\/)/.test(value) || /^https:\/\//i.test(value), "Use caminho local ou URL HTTPS.");
+export const bossSchema = z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(100), hp: z.number().int().positive(), specialty: z.string(), description: z.string(), active: z.boolean(), image: imageUrlSchema.optional(), skills: z.array(z.object({ name: z.string().trim().min(1), trigger: z.enum(["Tempo", "Conceito", "Demonstração", "Suporte", "Geral", "Perguntas"]), effect: z.string().trim().min(1) })).min(1) });

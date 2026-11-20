@@ -7,6 +7,7 @@ export interface BossSkill {
 }
 
 export interface Boss {
+  image?: string;
   id: string;
   name: string;
   hp: number;
