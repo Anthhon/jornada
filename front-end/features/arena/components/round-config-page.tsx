@@ -47,6 +47,7 @@ import {
   changedRoundFields,
   isDraftDirty,
   isOverdue,
+  resetTeamWarning,
   scoreOverrides,
   type RoundConfigDraft,
 } from "../lib/round-config";
@@ -84,6 +85,11 @@ export function RoundConfigPage() {
   const [hpDraft, setHpDraft] = useState<{
     roundId: number;
     value: string;
+  } | null>(null);
+  /** Equipe escolhida para o reset completo (M-51) — null = diálogo fechado. */
+  const [resetTarget, setResetTarget] = useState<{
+    id: number;
+    name: string;
   } | null>(null);
 
   // Busca compartilhada (sem setState — o effect só lê em callback).
@@ -226,6 +232,15 @@ export function RoundConfigPage() {
       "PV do chefe restaurado.",
     );
     if (done) setHpDraft(null);
+  };
+
+  /** Reset completo da equipe: zerar, devolver o PV e limpar o log (M-51). */
+  const resetTeam = async () => {
+    if (!round || !resetTarget) return;
+    await runAction(
+      () => arenaService.resetTeam(round.id, { group_id: resetTarget.id }),
+      `Equipe ${resetTarget.name} resetada.`,
+    );
   };
 
   const duplicate = async () => {
@@ -566,6 +581,10 @@ export function RoundConfigPage() {
                   groups={activeGroups}
                   scores={draft.scores}
                   onScoreChange={setScore}
+                  onReset={(group) =>
+                    setResetTarget({ id: group.id, name: group.name })
+                  }
+                  canReset={round.status !== "ENDED"}
                 />
               )}
               <p className="text-xs text-muted-foreground">
@@ -607,6 +626,35 @@ export function RoundConfigPage() {
               </p>
             </TabsContent>
           </Tabs>
+
+          {/* Reset de equipe: aviso obrigatório antes de zerar (M-51). */}
+          <AlertDialog
+            open={resetTarget !== null}
+            onOpenChange={(open) => {
+              if (!open) setResetTarget(null);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Resetar a equipe “{resetTarget?.name}”?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {resetTeamWarning(resetTarget?.name ?? "")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={busy}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={() => void resetTeam()}
+                >
+                  Resetar equipe
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Rodapé de ações (mockup). */}
           <div

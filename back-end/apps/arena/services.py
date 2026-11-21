@@ -212,6 +212,12 @@ def _restore(round_obj: ArenaRound, data: dict) -> None:
             )
     round_obj.contributions.exclude(group_id__in=keep).delete()
 
+    # Registros vazados pelo reset de equipe (M-51) voltam ao log junto
+    # com o estado — os ids vêm no checkpoint da própria ação.
+    voided_ids = data.get("voided_event_ids") or []
+    if voided_ids:
+        round_obj.events.filter(id__in=voided_ids).update(voided=False)
+
 
 @transaction.atomic
 def _persist(round_obj: ArenaRound, state: engine.RaidState, events: list,
@@ -264,7 +270,7 @@ def _persist(round_obj: ArenaRound, state: engine.RaidState, events: list,
         )
 
 
-def _run(round_obj, mutate, snapshot=True):
+def _run(round_obj, mutate, snapshot=True, checkpoint_extra=None):
     """Carrega, aplica ``mutate(state)``, credita recompensas se terminou, persiste.
 
     Com ``snapshot`` (padrão), o estado **antes** da ação vira checkpoint no
@@ -272,9 +278,15 @@ def _run(round_obj, mutate, snapshot=True):
     ciclo e liquidação (``end``, ``reopen``, ``undo``) passam ``False``: elas
     nunca são reversíveis por desfazer (o fim tem o ``reopen``, que estorna
     as recompensas).
+
+    ``checkpoint_extra`` entra no checkpoint junto com o estado — é o que o
+    reset de equipe (M-51) usa para levar os ids dos eventos vazados e o
+    desfazer trazê-los de volta ao log.
     """
     state = build_state(round_obj)
     checkpoint = _snapshot(round_obj, state) if snapshot else None
+    if checkpoint is not None and checkpoint_extra:
+        checkpoint.update(checkpoint_extra)
     events = mutate(state)
     _credit_rewards(round_obj, state, events)
     _persist(round_obj, state, events, checkpoint)
@@ -392,6 +404,83 @@ def undo_round(round_obj):
         message="Última ação desfeita.",
     )
     round_obj.refresh_from_db()
+
+
+@transaction.atomic
+def reset_team(round_obj: ArenaRound, group_id: int):
+    """Zera uma equipe na rodada e devolve o dano dela ao chefe (M-51).
+
+    Reset completo: placar, notas, dano (base e batalha), retaliação,
+    erros e cargas. O PV do chefe sobe o **dano exato** que a equipe
+    causou (aparado em ``max_hp``) e os eventos dela são **vazados** —
+    saem do log do estado, mas a linha fica no banco, o que permite ao
+    ``undo_round`` restaurar estado **e** log. A equipe continua
+    registrada: pode atacar e ser notada de novo.
+    """
+    if round_obj.status == ArenaRound.Status.ENDED:
+        raise engine.ArenaError(
+            "A disputa está encerrada — reabra para ajustar as equipes."
+        )
+    removed_ids = list(
+        round_obj.events.filter(group_id=group_id, voided=False)
+        .values_list("id", flat=True)
+    )
+
+    def mutate(state):
+        team = state.teams.get(group_id)
+        if team is None:
+            # Nada registrado: sem o que zerar (a tabela mostra a equipe
+            # mesmo sem contribuição em CONFIG) — no-op, sem evento.
+            return []
+        damage = team.total_damage
+        # Zera a equipe no estado; o registro permanece na batalha.
+        team.base_damage = 0
+        team.battle_damage = 0
+        team.retaliation_loss = 0
+        team.manual_adjustment = 0
+        team.criteria = None
+        team.wrong_answers = 0
+        team.damage_factor = 1.0
+        team.shield = 0
+        team.damage_buff = 0.0
+        # Cargas repostas: o que a equipe gastou foi zerado junto (ADR-020).
+        ref = state.config.balance_ref_teams
+        n = len(state.teams)
+        for ability in team.abilities:
+            ability.charges_left = engine.scaled_charges(
+                ability.max_charges, ref, n
+            )
+        # PV do chefe: devolve o dano exato dela, aparado no máximo.
+        state.hp = min(state.max_hp, state.hp + damage)
+        if state.hp > 0:
+            state.killing_team = None
+        # Vaza o histórico ANTES de anotar o reset (a nota é nova e fica).
+        round_obj.events.filter(id__in=removed_ids).update(voided=True)
+        name = Group.objects.get(pk=group_id).name
+        return [
+            engine.Event(
+                kind=engine.KIND_EDIT,
+                actor=engine.ACTOR_SYSTEM,
+                group_id=group_id,
+                value=damage,
+                message=(
+                    f"Equipe {name} resetada: ataques e notas zerados. "
+                    + (
+                        f"PV do chefe devolvido +{damage}."
+                        if damage
+                        else "Sem dano a devolver."
+                    )
+                ),
+            )
+        ]
+
+    return _run(
+        round_obj,
+        mutate,
+        checkpoint_extra=(
+            {"voided_event_ids": removed_ids} if removed_ids else None
+        ),
+    )
 
 
 def duplicate_round(round_obj) -> ArenaRound:

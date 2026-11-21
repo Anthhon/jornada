@@ -151,8 +151,11 @@ class ArenaStateSerializer(serializers.ModelSerializer):
         return data
 
     def get_events(self, obj):
+        # Vazados (reset de equipe, M-51) ficam fora do estado público:
+        # saem do log da batalha mas permanecem no banco.
         return ArenaEventSerializer(
-            obj.events.select_related("group").all(), many=True
+            obj.events.filter(voided=False).select_related("group").all(),
+            many=True,
         ).data
 
 
@@ -213,6 +216,12 @@ class SetHpSerializer(serializers.Serializer):
     """Ajuste do PV do chefe (M-50) — o teto é o ``max_hp`` da rodada."""
 
     hp = serializers.IntegerField(min_value=0)
+
+
+class ResetTeamSerializer(serializers.Serializer):
+    """Reset completo de uma equipe na rodada (M-51)."""
+
+    group_id = serializers.IntegerField()
 
 
 class UseAbilitySerializer(serializers.Serializer):

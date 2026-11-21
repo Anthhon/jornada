@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil } from "@/components/icons/rpg-icons";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,10 @@ interface TeamsScoreTableProps {
   /** Placar em edição (group_id -> string). */
   scores: Record<string, string>;
   onScoreChange: (groupId: number, value: string) => void;
+  /** Abre a confirmação do reset completo da equipe (M-51). */
+  onReset: (group: ArenaGroupOption) => void;
+  /** Reset liberado — disputa encerrada exige reabrir antes. */
+  canReset: boolean;
 }
 
 function asNumber(value: string | undefined): number {
@@ -29,9 +34,16 @@ const SITUACAO_STYLES: Record<string, string> = {
 /**
  * Tabela "Pontos e Placares" (M-49): o professor edita o placar de cada
  * equipe na rodada. A situação reflete o ranking entre as equipes — pódio
- * (1º/2º/3º) ou "Em disputa" (sem pontos, como no mockup).
+ * (1º/2º/3º) ou "Em disputa" (sem pontos, como no mockup). A coluna
+ * **Ação** reset a equipe inteira com aviso (M-51).
  */
-export function TeamsScoreTable({ groups, scores, onScoreChange }: TeamsScoreTableProps) {
+export function TeamsScoreTable({
+  groups,
+  scores,
+  onScoreChange,
+  onReset,
+  canReset,
+}: TeamsScoreTableProps) {
   const ranked = groups
     .map((group) => ({ group, value: asNumber(scores[String(group.id)]) }))
     .sort((a, b) => b.value - a.value || a.group.name.localeCompare(b.group.name));
@@ -51,6 +63,7 @@ export function TeamsScoreTable({ groups, scores, onScoreChange }: TeamsScoreTab
             </th>
             <th className="px-4 py-2.5 text-right font-medium">Pontuação Total</th>
             <th className="px-4 py-2.5 text-right font-medium">Situação</th>
+            <th className="px-4 py-2.5 text-right font-medium">Ação</th>
           </tr>
         </thead>
         <tbody>
@@ -92,6 +105,22 @@ export function TeamsScoreTable({ groups, scores, onScoreChange }: TeamsScoreTab
                   >
                     {situacao.label}
                   </span>
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    disabled={!canReset}
+                    title={
+                      canReset
+                        ? `Resetar ${group.name}`
+                        : "Reabra a disputa para resetar equipes"
+                    }
+                    onClick={() => onReset(group)}
+                  >
+                    Resetar
+                  </Button>
                 </td>
               </tr>
             );

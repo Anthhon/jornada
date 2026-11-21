@@ -6,6 +6,7 @@ import {
   changedRoundFields,
   isDraftDirty,
   isOverdue,
+  resetTeamWarning,
   scoreOverrides,
   todayIso,
 } from "../features/arena/lib/round-config";
@@ -128,4 +129,15 @@ test("isOverdue: prazo vencido só antes do fim da disputa (M-50)", () => {
 test("todayIso: AAAA-MM-DD com dois dígitos (fuso local)", () => {
   assert.equal(todayIso(new Date(2026, 0, 5)), "2026-01-05");
   assert.equal(todayIso(new Date(2026, 10, 21)), "2026-11-21");
+});
+
+test("resetTeamWarning: aviso completo do reset da equipe (M-51)", () => {
+  const warning = resetTeamWarning("Equipe Alfa");
+  // O professor confere o essencial antes de confirmar.
+  assert.ok(warning.includes("Equipe Alfa"));
+  assert.ok(warning.includes("zerados"));
+  assert.ok(warning.includes("PV do chefe"));
+  assert.ok(warning.includes("log da batalha"));
+  assert.ok(warning.includes("atacar (e ser notada) de novo"));
+  assert.ok(warning.includes("Desfazer"));
 });

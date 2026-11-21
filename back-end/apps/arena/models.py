@@ -307,6 +307,14 @@ class ArenaEvent(models.Model):
             verbose_name="Checkpoint de estado",
             help_text="Estado antes da ação reversível — base do desfazer (M-50).",
             )
+    voided = models.BooleanField(
+            default=False,
+            verbose_name="Vazado",
+            help_text=(
+                "Oculto do log — equipe resetada (M-51). A linha fica no "
+                "banco para auditoria e para o desfazer restaurar."
+            ),
+            )
 
     class Meta:
         ordering = ["round", "created_at", "id"]

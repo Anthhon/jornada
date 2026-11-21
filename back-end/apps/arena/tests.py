@@ -1266,3 +1266,222 @@ class ArenaRoundManagementTests(TestCase):
                           client=client)
         self.assertEqual(resp.status_code, 400)
         self.assertIn("reabra", str(resp.data))
+
+
+class ArenaTeamResetTests(TestCase):
+    """Reset completo de equipe na rodada (M-51).
+
+    Zera placar/notas/dano/cargas da equipe, devolve o dano exato ao
+    chefe, vaza os eventos dela do log e libera nova avaliação — tudo
+    com checkpoint para o desfazer restaurar estado **e** log.
+    """
+
+    def setUp(self):
+        self.boss = Boss.objects.create(name="Vigia", max_hp=1000)
+        self.group = Group.objects.create(name="Equipe Alfa")
+        self.other = Group.objects.create(name="Equipe Beta")
+
+    def _round(self, **payload):
+        base = {
+            "name": "Rodada Reset", "boss": self.boss.id,
+            "balance_ref_teams": 0, "max_hp": 1000,
+        }
+        base.update(payload)
+        resp = staff_client().post("/api/arena/rounds/", base, format="json")
+        self.assertEqual(resp.status_code, 201)
+        return resp.data["id"]
+
+    def _post(self, rid, action, payload=None, client=None):
+        return (client or staff_client()).post(
+            f"/api/arena/rounds/{rid}/{action}/",
+            payload or {}, format="json",
+        )
+
+    def _criteria(self, score=3):
+        return {
+            "tempo": score, "historico": score, "paradigma": score,
+            "caracteristicas": score, "usos": score, "codigo": score,
+            "criatividade": score,
+        }
+
+    def test_reset_devolve_pv_zera_equipe_e_vaza_log(self):
+        rid = self._round()
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        self._post(rid, "damage",
+                   {"group_id": self.group.id, "damage": 300}, client=client)
+        self._post(rid, "damage",
+                   {"group_id": self.other.id, "damage": 100}, client=client)
+        self._post(rid, "override",
+                   {"group_id": self.group.id, "amount": 420}, client=client)
+        self.assertEqual(ArenaRound.objects.get(id=rid).hp, 600)
+
+        resp = self._post(rid, "reset-team",
+                          {"group_id": self.group.id}, client=client)
+        self.assertEqual(resp.status_code, 200)
+        round_obj = ArenaRound.objects.get(id=rid)
+        # PV devolvido só o dano da equipe zerada; a outra fica intacta.
+        self.assertEqual(round_obj.hp, 900)
+        alfa = round_obj.contributions.get(group_id=self.group.id)
+        self.assertEqual(alfa.base_damage, 0)
+        self.assertEqual(alfa.battle_damage, 0)
+        self.assertEqual(alfa.retaliation_loss, 0)
+        self.assertEqual(alfa.manual_adjustment, 0)
+        self.assertIsNone(alfa.criteria)
+        self.assertEqual(alfa.wrong_answers, 0)
+        self.assertEqual(alfa.damage_factor, 1.0)
+        self.assertEqual(alfa.shield, 0)
+        self.assertEqual(alfa.damage_buff, 0.0)
+        beta = round_obj.contributions.get(group_id=self.other.id)
+        self.assertEqual(beta.battle_damage, 100)
+        # Log: os eventos da equipe vazam (DAMAGE + REWARD); a nota fica.
+        self.assertEqual(
+            round_obj.events.filter(
+                group_id=self.group.id, voided=True,
+            ).count(), 2,
+        )
+        nota = round_obj.events.get(group_id=self.group.id, voided=False)
+        self.assertEqual(nota.kind, "EDIT")
+        self.assertIn("Equipe Alfa resetada", nota.message)
+        self.assertIn("+300", nota.message)
+        # Estado público não mostra os vazados — só a nota.
+        state = anon_client().get(f"/api/arena/rounds/{rid}/state/")
+        alfa_events = [
+            e for e in state.data["events"] if e["group"] == self.group.id
+        ]
+        self.assertEqual(len(alfa_events), 1)
+        self.assertIn("resetada", alfa_events[0]["message"])
+
+    def test_reset_libera_nova_avaliacao_de_desempenho(self):
+        rid = self._round(max_hp=5000)
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        resp = self._post(rid, "apply-performance",
+                          {"group_id": self.group.id,
+                           "criteria": self._criteria()}, client=client)
+        self.assertEqual(resp.status_code, 200)
+        # Nota já registrada: recusa reavaliar.
+        resp = self._post(rid, "apply-performance",
+                          {"group_id": self.group.id,
+                           "criteria": self._criteria(1)}, client=client)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Desempenho já registrado", str(resp.data))
+        self.assertEqual(ArenaRound.objects.get(id=rid).hp, 3500)
+
+        resp = self._post(rid, "reset-team",
+                          {"group_id": self.group.id}, client=client)
+        self.assertEqual(resp.status_code, 200)
+        round_obj = ArenaRound.objects.get(id=rid)
+        self.assertIsNone(
+            round_obj.contributions.get(group_id=self.group.id).criteria
+        )
+        self.assertEqual(round_obj.hp, 5000)  # 1500 devolvidos ao chefe
+        # Liberada: notar de novo funciona e volta a causar dano.
+        resp = self._post(rid, "apply-performance",
+                          {"group_id": self.group.id,
+                           "criteria": self._criteria()}, client=client)
+        self.assertEqual(resp.status_code, 200)
+        round_obj.refresh_from_db()
+        self.assertEqual(
+            round_obj.contributions.get(
+                group_id=self.group.id
+            ).base_damage, 1500,
+        )
+        self.assertEqual(round_obj.hp, 3500)
+
+    def test_reset_em_encerrada_recusa(self):
+        rid = self._round()
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        self._post(rid, "damage",
+                   {"group_id": self.group.id, "damage": 300}, client=client)
+        self._post(rid, "end", client=client)
+        resp = self._post(rid, "reset-team",
+                          {"group_id": self.group.id}, client=client)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("reabra", str(resp.data))
+
+    def test_reset_sem_registro_e_noop(self):
+        # Em CONFIG, sem contribuição: a ação vira um no-op (200, sem
+        # eventos) — a tabela mostra a equipe mesmo sem registro.
+        rid = self._round()
+        resp = self._post(rid, "reset-team", {"group_id": self.other.id})
+        self.assertEqual(resp.status_code, 200)
+        resp = self._post(rid, "reset-team", {"group_id": 9999})
+        self.assertEqual(resp.status_code, 200)
+        round_obj = ArenaRound.objects.get(id=rid)
+        self.assertFalse(round_obj.contributions.exists())
+        self.assertFalse(round_obj.events.exists())
+
+    def test_undo_restaura_reset_completo(self):
+        rid = self._round()
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        self._post(rid, "damage",
+                   {"group_id": self.group.id, "damage": 300}, client=client)
+        self._post(rid, "reset-team",
+                   {"group_id": self.group.id}, client=client)
+        self.assertEqual(ArenaRound.objects.get(id=rid).hp, 1000)
+
+        resp = self._post(rid, "undo", client=client)
+        self.assertEqual(resp.status_code, 200)
+        round_obj = ArenaRound.objects.get(id=rid)
+        # Estado de volta: dano da equipe e PV anterior.
+        self.assertEqual(round_obj.hp, 700)
+        self.assertEqual(
+            round_obj.contributions.get(
+                group_id=self.group.id
+            ).battle_damage, 300,
+        )
+        # Log de volta: o evento da equipe reaparece e a nota some.
+        self.assertTrue(
+            round_obj.events.filter(
+                group_id=self.group.id, kind="DAMAGE", voided=False,
+            ).exists()
+        )
+        self.assertFalse(
+            round_obj.events.filter(message__contains="resetada").exists()
+        )
+        self.assertEqual(
+            round_obj.events.order_by("-id").first().message,
+            "Última ação desfeita.",
+        )
+
+    def test_reset_apara_pv_no_maximo(self):
+        rid = self._round()
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        self._post(rid, "damage",
+                   {"group_id": self.group.id, "damage": 300}, client=client)
+        # Professor levanta o PV acima do que o dano devolveria.
+        self._post(rid, "set-hp", {"hp": 900}, client=client)
+        resp = self._post(rid, "reset-team",
+                          {"group_id": self.group.id}, client=client)
+        self.assertEqual(resp.status_code, 200)
+        # min(max_hp, 900 + 300) = 1000 — nunca passa do máximo.
+        self.assertEqual(ArenaRound.objects.get(id=rid).hp, 1000)
+
+    def test_reset_repoi_cargas_das_habilidades(self):
+        from apps.groups.models import GroupAbility, TeamAbilityTemplate
+
+        template = TeamAbilityTemplate.objects.create(
+            theme="Floresta", name="Golpe", kind="BASIC", effect="STRIKE",
+            value=100, max_charges=2,
+        )
+        ability = GroupAbility.objects.create(
+            group=self.group, template=template
+        )
+        rid = self._round()
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        self._post(rid, "use-ability",
+                   {"group_id": self.group.id, "ability_id": ability.id},
+                   client=client)
+        ability.refresh_from_db()
+        self.assertEqual(ability.charges_left, 1)
+
+        resp = self._post(rid, "reset-team",
+                          {"group_id": self.group.id}, client=client)
+        self.assertEqual(resp.status_code, 200)
+        ability.refresh_from_db()
+        self.assertEqual(ability.charges_left, 2)  # repostas no reset

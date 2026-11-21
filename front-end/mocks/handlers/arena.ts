@@ -11,8 +11,9 @@ import { isMockTeacher } from "../mock-teacher";
  * Persiste em `localStorage` (fallback em memória), como a agenda.
  */
 
-/** v4: gerência de rodadas — reabrir/estorno, PV editável, desfazer (M-50). */
-const storageKey = "jornada-mock-arena-v4";
+/** v4: gerência de rodadas — reabrir/estorno, PV editável, desfazer (M-50).
+ *  v5: reset completo de equipe — vazamento de log + devolução de PV (M-51). */
+const storageKey = "jornada-mock-arena-v5";
 
 type Status = "CONFIG" | "RUNNING" | "PAUSED" | "ENDED";
 
@@ -82,6 +83,8 @@ interface MockEvent {
   created_at: string | null;
   /** Checkpoint antes da ação reversível (desfazer, M-50) — não vira estado. */
   snapshot?: unknown;
+  /** Oculto do log — equipe resetada (M-51); o desfazer desazê. */
+  voided?: boolean;
 }
 
 interface MockRound {
@@ -349,7 +352,10 @@ function toState(round: MockRound) {
     balance: balanceFactor(round),
     boss: round.boss,
     // O checkpoint (M-50) é interno: some do estado público, como no back.
-    events: round.events.map((ev) => ({ ...ev, snapshot: undefined })),
+    // Vazados (reset de equipe, M-51) também ficam fora do log exibido.
+    events: round.events
+      .filter((ev) => !ev.voided)
+      .map((ev) => ({ ...ev, snapshot: undefined })),
     rewards_credited: round.rewards_credited,
     teams,
   };
@@ -429,6 +435,13 @@ function restoreRound(round: MockRound, snapshot: Record<string, unknown>): void
   round.rewards_credited = snapshot.rewards_credited as boolean;
   // Equipes registradas depois do checkpoint (ex.: start) somem de volta.
   round.teams = structuredClone(snapshot.teams as MockRound["teams"]);
+  // Registros vazados pelo reset (M-51) voltam ao log junto com o estado.
+  const voidedIds = (snapshot.voided_event_ids as number[] | undefined) ?? [];
+  if (voidedIds.length > 0) {
+    for (const ev of round.events) {
+      if (voidedIds.includes(ev.id)) ev.voided = false;
+    }
+  }
 }
 
 function creditRewards(arena: MockArena, round: MockRound): void {
@@ -907,6 +920,41 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
         `PV do chefe ajustado: ${before} → ${next}.`);
       return null;
     }
+    case "reset-team": {
+      if (round.status === "ENDED") {
+        return "A disputa está encerrada — reabra para ajustar as equipes.";
+      }
+      const groupId = Number(body.group_id);
+      const team = round.teams[String(groupId)];
+      if (!team) return null; // sem registro: no-op, como no back (M-51)
+      const damage = team.base_damage + team.battle_damage;
+      // Reset completo: placar, notas, dano, retaliação, erros e cargas.
+      team.base_damage = 0;
+      team.battle_damage = 0;
+      team.retaliation_loss = 0;
+      team.manual_adjustment = 0;
+      team.criteria = null;
+      team.wrong_answers = 0;
+      team.damage_factor = 1;
+      team.shield = 0;
+      team.damage_buff = 0;
+      {
+        const n = Object.keys(round.teams).length;
+        for (const ability of team.abilities) {
+          ability.charges_left = scaledCharges(ability.max_charges, round.balance_ref_teams, n);
+        }
+      }
+      // PV do chefe: devolve o dano exato dela, aparado no máximo.
+      round.hp = Math.min(round.max_hp, round.hp + damage);
+      if (round.hp > 0) round.killing_team = null;
+      for (const ev of round.events) {
+        if (ev.group === groupId) ev.voided = true;
+      }
+      logEvent(arena, round, "EDIT", "SYSTEM", groupId, damage,
+        `Equipe ${team.group_name} resetada: ataques e notas zerados. ` +
+        (damage > 0 ? `PV do chefe devolvido +${damage}.` : "Sem dano a devolver."));
+      return null;
+    }
     case "undo": {
       let index = -1;
       for (let i = round.events.length - 1; i >= 0; i--) {
@@ -934,7 +982,7 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
 
 const ACTIONS = [
   "start", "pause", "resume", "end", "attack", "apply-performance", "damage", "override",
-  "use-ability", "renew-abilities", "reopen", "set-hp", "undo",
+  "use-ability", "renew-abilities", "reopen", "set-hp", "undo", "reset-team",
 ];
 
 /** Ações que geram checkpoint no primeiro evento (desfazer, M-50). */
@@ -1202,6 +1250,13 @@ export const arenaHandlers = [
         if (!round) return error("Rodada não encontrada.", 404);
         const checkpoint =
           REVERSIBLE_ACTIONS.includes(action) ? snapshotRound(round) : null;
+        if (checkpoint !== null && action === "reset-team") {
+          // Ids que o reset vai vazar: o desfazer usa para trazê-los de volta.
+          const gid = Number(body.group_id);
+          checkpoint.voided_event_ids = round.events
+            .filter((ev) => ev.group === gid && !ev.voided)
+            .map((ev) => ev.id);
+        }
         const eventsBefore = round.events.length;
         const failure = applyAction(arena, round, action, body);
         if (failure) return error(failure);

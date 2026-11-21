@@ -146,3 +146,19 @@ export function isOverdue(
 ): boolean {
   return Boolean(deadline) && status !== "ENDED" && deadline < today;
 }
+
+/**
+ * Aviso do reset de uma equipe (M-51): o professor confirma sabendo que
+ * os ataques são zerados, o PV do chefe recebe o dano de volta, o
+ * registro sai do log — e que a equipe segue na batalha (dá para
+ * desfazer pelo botão Desfazer).
+ */
+export function resetTeamWarning(name: string): string {
+  return (
+    `Os ataques, notas e o placar de ${name} serão zerados nesta rodada. ` +
+    "O PV do chefe será restaurado com o dano exato que a equipe causou e " +
+    "o registro dela sai do log da batalha. A equipe continua na partida e " +
+    "poderá atacar (e ser notada) de novo — dá para desfazer pelo botão " +
+    "Desfazer."
+  );
+}

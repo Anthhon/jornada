@@ -142,7 +142,14 @@ const stateOf = async (id: number) =>
     hp: number;
     max_hp: number;
     outcome: string;
-    events: { kind: string; message: string }[];
+    events: { kind: string; message: string; group: number | null }[];
+    teams: {
+      group_id: number;
+      base_damage: number;
+      battle_damage: number;
+      manual_adjustment: number;
+      criteria: Record<string, number> | null;
+    }[];
   };
 
 test("duplicate cria cópia em CONFIG sem histórico e o DELETE remove", async () => {
@@ -244,4 +251,108 @@ test("end bloqueia o override, reopen reabre e o ciclo recusa reabrir 2x", async
   state = await stateOf(id);
   assert.equal(state.hp, state.max_hp);
   assert.ok(!state.events.some((ev) => ev.kind === "END"));
+});
+
+// ——— M-51: reset completo de equipe (configuração da rodada) ———
+
+test("reset-team zera a equipe, devolve o PV e tira os eventos do log", async () => {
+  const id = await createRound("Rodada Reset");
+  assert.equal((await post(`/arena/rounds/${id}/start/`, {})).status, 200);
+  await post(`/arena/rounds/${id}/damage/`, { group_id: 1, damage: 300 });
+  await post(`/arena/rounds/${id}/damage/`, { group_id: 2, damage: 100 });
+  await post(`/arena/rounds/${id}/override/`, { group_id: 1, amount: 420 });
+
+  let state = await stateOf(id);
+  assert.equal(state.hp, state.max_hp - 400);
+
+  const resp = await post(`/arena/rounds/${id}/reset-team/`, { group_id: 1 });
+  assert.equal(resp.status, 200);
+  state = await stateOf(id);
+  // Só o dano da equipe 1 volta ao chefe; a equipe 2 fica intacta.
+  assert.equal(state.hp, state.max_hp - 100);
+  const alfa = state.teams.find((item) => item.group_id === 1);
+  assert.equal(alfa?.base_damage, 0);
+  assert.equal(alfa?.battle_damage, 0);
+  assert.equal(alfa?.manual_adjustment, 0);
+  assert.equal(alfa?.criteria, null);
+  const beta = state.teams.find((item) => item.group_id === 2);
+  assert.equal(beta?.battle_damage, 100);
+  // Log: os eventos da equipe 1 somem; a nota do reset fica.
+  assert.ok(!state.events.some((ev) => ev.group === 1 && ev.kind === "DAMAGE"));
+  assert.ok(!state.events.some((ev) => ev.group === 1 && ev.kind === "REWARD"));
+  assert.ok(state.events.some((ev) => ev.group === 2 && ev.kind === "DAMAGE"));
+  assert.ok(state.events.some((ev) => ev.kind === "EDIT" && ev.message.includes("resetada")));
+
+  // A equipe zerada pode bater de novo.
+  assert.equal(
+    (await post(`/arena/rounds/${id}/damage/`, { group_id: 1, damage: 50 })).status,
+    200,
+  );
+  state = await stateOf(id);
+  assert.equal(state.hp, state.max_hp - 150);
+  assert.ok(state.events.some((ev) => ev.group === 1 && ev.kind === "DAMAGE"));
+});
+
+test("undo devolve o reset: PV, dano e log de volta", async () => {
+  const id = await createRound("Rodada Reset Undo");
+  assert.equal((await post(`/arena/rounds/${id}/start/`, {})).status, 200);
+  await post(`/arena/rounds/${id}/damage/`, { group_id: 1, damage: 300 });
+  assert.equal(
+    (await post(`/arena/rounds/${id}/reset-team/`, { group_id: 1 })).status,
+    200,
+  );
+  let state = await stateOf(id);
+  assert.equal(state.hp, state.max_hp);
+
+  const resp = await post(`/arena/rounds/${id}/undo/`, {});
+  assert.equal(resp.status, 200);
+  state = await stateOf(id);
+  assert.equal(state.hp, state.max_hp - 300);
+  const alfa = state.teams.find((item) => item.group_id === 1);
+  assert.equal(alfa?.battle_damage, 300);
+  // O registro da equipe volta ao log e a nota do reset some.
+  assert.ok(state.events.some((ev) => ev.group === 1 && ev.kind === "DAMAGE"));
+  assert.ok(!state.events.some((ev) => ev.message.includes("resetada")));
+});
+
+test("reset libera nova avaliação de desempenho da equipe", async () => {
+  const id = await createRound("Rodada Notas");
+  assert.equal((await post(`/arena/rounds/${id}/start/`, {})).status, 200);
+  const criteria = {
+    tempo: 3, historico: 3, paradigma: 3,
+    caracteristicas: 3, usos: 3, codigo: 3, criatividade: 3,
+  };
+
+  const first = await post(`/arena/rounds/${id}/apply-performance/`, {
+    group_id: 1, criteria,
+  });
+  assert.equal(first.status, 200);
+  const again = await post(`/arena/rounds/${id}/apply-performance/`, {
+    group_id: 1, criteria,
+  });
+  assert.equal(again.status, 400);
+  assert.ok((await again.text()).includes("Desempenho já registrado"));
+
+  assert.equal(
+    (await post(`/arena/rounds/${id}/reset-team/`, { group_id: 1 })).status,
+    200,
+  );
+  const after = await post(`/arena/rounds/${id}/apply-performance/`, {
+    group_id: 1, criteria,
+  });
+  assert.equal(after.status, 200);
+  const state = await stateOf(id);
+  const alfa = state.teams.find((item) => item.group_id === 1);
+  assert.deepEqual(alfa?.criteria, criteria);
+  assert.ok((alfa?.base_damage ?? 0) > 0);
+});
+
+test("reset em disputa encerrada recusa e manda reabrir", async () => {
+  const id = await createRound("Rodada Reset Fim");
+  assert.equal((await post(`/arena/rounds/${id}/start/`, {})).status, 200);
+  assert.equal((await post(`/arena/rounds/${id}/end/`, {})).status, 200);
+
+  const resp = await post(`/arena/rounds/${id}/reset-team/`, { group_id: 1 });
+  assert.equal(resp.status, 400);
+  assert.ok((await resp.text()).includes("reabra"));
 });

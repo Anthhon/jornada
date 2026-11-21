@@ -15,6 +15,7 @@ from .serializers import (
     OverrideSerializer,
     PerformanceSerializer,
     RenewAbilitiesSerializer,
+    ResetTeamSerializer,
     SetHpSerializer,
     UseAbilitySerializer,
 )
@@ -158,4 +159,14 @@ class ArenaRoundViewSet(viewsets.ModelViewSet):
         return self._run(
             request, services.renew_abilities, self.get_object(),
             data["group_id"],
+        )
+
+    @action(detail=True, methods=["post"], url_path="reset-team")
+    def reset_team(self, request, pk=None):
+        """Zera uma equipe na rodada e devolve o dano ao chefe (M-51)."""
+        serializer = ResetTeamSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self._run(
+            request, services.reset_team, self.get_object(),
+            serializer.validated_data["group_id"],
         )

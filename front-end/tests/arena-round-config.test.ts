@@ -62,6 +62,17 @@ test("setHp faz POST set-hp com o valor (M-50)", async () => {
   assert.deepEqual(action, { path: "7", body: { hp: 1200 } });
 });
 
+test("resetTeam faz POST reset-team com o group_id (M-51)", async () => {
+  server.use(
+    http.post(`${API_BASE_URL}/arena/rounds/:id/reset-team/`, async ({ request, params }) => {
+      action = { path: String(params.id), body: await request.json() };
+      return HttpResponse.json({ id: Number(params.id) });
+    }),
+  );
+  await arenaService.resetTeam(6, { group_id: 3 });
+  assert.deepEqual(action, { path: "6", body: { group_id: 3 } });
+});
+
 test("reopen e undo fazem POST sem corpo", async () => {
   const calls: string[] = [];
   server.use(

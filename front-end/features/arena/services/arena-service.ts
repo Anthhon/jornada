@@ -120,6 +120,9 @@ export const arenaService = {
   setHp: (id: number, hp: number) => post(id, "set-hp", { hp }),
   /** Desfaz a última ação registrada (M-50). */
   undo: (id: number) => post(id, "undo"),
+  /** Zera uma equipe na rodada e devolve o dano ao chefe (M-51). */
+  resetTeam: (id: number, payload: { group_id: number }) =>
+    post(id, "reset-team", payload),
   attack: (id: number, payload: { group_id: number; correct: boolean; points: number }) =>
     post(id, "attack", payload),
   applyPerformance: (
