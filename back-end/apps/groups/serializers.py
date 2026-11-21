@@ -58,6 +58,11 @@ class GroupSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "A escolha precisa ser 3 básicas + 1 ultimate."
             )
+        themes = {t.theme for t in templates}
+        if len(themes) != 1:
+            raise serializers.ValidationError(
+                "As 4 habilidades precisam ser de um só tema (ADR-021)."
+            )
         return value
 
     def create(self, validated_data):
@@ -82,9 +87,19 @@ class GroupSerializer(serializers.ModelSerializer):
         present = set(
             group.abilities.values_list("template_id", flat=True)
         )
+        novos = [tid for tid in template_ids if tid not in present]
+        templates = {
+            t.id: t for t in TeamAbilityTemplate.objects.filter(id__in=novos)
+        }
+        # Habilidade nova nasce com as cargas base; o start da raid (escala
+        # do bando, ADR-020) e o renovar do professor reajustam.
         GroupAbility.objects.bulk_create([
-            GroupAbility(group=group, template_id=tid)
-            for tid in template_ids if tid not in present
+            GroupAbility(
+                group=group,
+                template=templates[tid],
+                charges_left=templates[tid].max_charges,
+            )
+            for tid in novos
         ])
 
 

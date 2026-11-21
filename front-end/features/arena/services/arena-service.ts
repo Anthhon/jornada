@@ -3,8 +3,10 @@ import {
   arenaBossOptionSchema,
   arenaRoundSchema,
   arenaStateSchema,
+  teamAbilityTemplateSchema,
   type ArenaRound,
   type ArenaState,
+  type TeamAbilityTemplate,
 } from "../schemas/arena";
 
 const base = "/arena/rounds";
@@ -22,6 +24,22 @@ export async function getState(id: number, signal?: AbortSignal): Promise<ArenaS
 export async function listBosses(signal?: AbortSignal) {
   const { data } = await api.get("/bosses/", { signal });
   return arenaBossOptionSchema.array().parse(data);
+}
+
+/** Catálogo de modelos de habilidade (o professor monta o 3+1, ADR-021). */
+export async function listTeamAbilities(
+  signal?: AbortSignal,
+): Promise<TeamAbilityTemplate[]> {
+  const { data } = await api.get("/team-abilities/", { signal });
+  return teamAbilityTemplateSchema.array().parse(data);
+}
+
+/** Atribui o 3+1 escolhido ao grupo (`PATCH /groups/{id}/`, ADR-021). */
+export async function assignAbilities(
+  groupId: number,
+  templateIds: number[],
+): Promise<void> {
+  await api.patch(`/groups/${groupId}/`, { abilities: templateIds });
 }
 
 export async function createRound(payload: {
@@ -52,6 +70,8 @@ export const arenaService = {
   list: listRounds,
   getState,
   listBosses,
+  listTeamAbilities,
+  assignAbilities,
   create: createRound,
   start: (id: number) => post(id, "start"),
   pause: (id: number) => post(id, "pause"),

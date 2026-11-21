@@ -26,6 +26,22 @@ export const arenaTeamAbilitySchema = z.object({
   charges_left: z.number(),
 });
 
+/** Modelo do catálogo de habilidades (`/team-abilities/`, ADR-021). */
+export const teamAbilityTemplateSchema = z.object({
+  id: z.number(),
+  theme: z.string(),
+  name: z.string(),
+  /** BASIC | ULTIMATE */
+  kind: z.string(),
+  /** STRIKE | HEAL | SHIELD | BUFF */
+  effect: z.string(),
+  value: z.number(),
+  max_charges: z.number(),
+  description: z.string(),
+});
+
+export type TeamAbilityTemplate = z.infer<typeof teamAbilityTemplateSchema>;
+
 export const arenaTeamSchema = z.object({
   group_id: z.number(),
   group_name: z.string(),

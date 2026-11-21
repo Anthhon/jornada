@@ -261,6 +261,49 @@ class TeamAbilityAssignmentTests(TestCase):
             item["theme"] == "Vulcão" for item in resp.data
         ))
 
+    def test_atribuicao_nasce_com_cargas_base(self):
+        resp = self._create(self.basic + [self.ultimate])
+        self.assertEqual(resp.status_code, 201)
+        group = Group.objects.get(name="Equipe Habilidades")
+        for ability in group.abilities.all():
+            self.assertEqual(ability.charges_left, ability.template.max_charges)
+
+    def test_troca_preserva_cargas_das_que_ficam(self):
+        extra = TeamAbilityTemplate.objects.create(
+            theme="Floresta", name="Basica Extra", kind="BASIC",
+            effect="STRIKE", value=90, max_charges=3,
+        )
+        group = Group.objects.create(name="Cargas")
+        for tid in self.basic + [self.ultimate]:
+            group.abilities.create(template_id=tid, charges_left=1)
+        novas = [extra.id, self.basic[1], self.basic[2], self.ultimate]
+        resp = self.client.patch(
+            f"/api/groups/{group.id}/", {"abilities": novas}, format="json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        group.refresh_from_db()
+        self.assertEqual(group.abilities.count(), 4)
+        # A que ficou mantém a carga gast; a nova nasce com a base.
+        self.assertEqual(
+            group.abilities.get(template_id=self.basic[1]).charges_left, 1
+        )
+        nova = group.abilities.get(template_id=extra.id)
+        self.assertEqual(nova.charges_left, nova.template.max_charges)
+        self.assertFalse(
+            group.abilities.filter(template_id=self.basic[0]).exists()
+        )
+
+    def test_tema_misturado_rejeitado(self):
+        mista = [
+            self.basic[0], self.basic[1],
+            self.tpl[("Vulcão", "Basica 2")].id, self.ultimate,
+        ]
+        resp = self.client.post(
+            "/api/groups/", {"name": "Misto", "abilities": mista}, format="json"
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(Group.objects.filter(name="Misto").count(), 0)
+
 
 class SeedHabilidadesEquipeTests(TestCase):
     """seed_habilidades_equipe: catálogo por tema + atribuição 3+1 (ADR-021)."""

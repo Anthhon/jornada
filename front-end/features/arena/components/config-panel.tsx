@@ -5,9 +5,10 @@ import { Scroll } from "@/features/journey/components/ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CRITERIA } from "@/constants/evaluation";
-import { Flag, Pause, Play, RefreshCw, Sparkles } from "@/components/icons/rpg-icons";
+import { Flag, Pause, Pencil, Play, RefreshCw, Sparkles } from "@/components/icons/rpg-icons";
 import { cn } from "@/lib/utils";
 import type { ArenaState, ArenaTeamAbility } from "../schemas/arena";
+import { AbilityPicker } from "./ability-picker";
 
 interface ConfigPanelProps {
   state: ArenaState;
@@ -23,6 +24,8 @@ interface ConfigPanelProps {
   onUseAbility: (payload: { group_id: number; ability_id: number }) => Promise<boolean>;
   /** Professor repõe as cargas da equipe selecionada. */
   onRenewAbilities: (group_id: number) => void;
+  /** Atribui o 3+1 escolhido no picker (`PATCH /groups/{id}/`, ADR-021). */
+  onAssignAbilities: (payload: { group_id: number; template_ids: number[] }) => Promise<void>;
 }
 
 /** Descrição curta do efeito da habilidade de equipe (ADR-021). */
@@ -59,6 +62,7 @@ export function ConfigPanel({
   onApplyPerformance,
   onUseAbility,
   onRenewAbilities,
+  onAssignAbilities,
 }: ConfigPanelProps) {
   const [teamId, setTeamId] = useState("");
   const [correct, setCorrect] = useState(true);
@@ -68,6 +72,7 @@ export function ConfigPanel({
   );
   /** `sinceEventId` enquanto o dado rola; o resultado é derivado dos eventos. */
   const [rolling, setRolling] = useState<number | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const running = state.status === "RUNNING";
   const canAttack = running && state.teams.length > 0;
@@ -95,6 +100,12 @@ export function ConfigPanel({
     setRolling(sinceEventId);
     const ok = await onUseAbility({ group_id: selectedTeam.group_id, ability_id: abilityId });
     if (!ok) setRolling(null); // erro já avisa o toast do painel pai
+  };
+
+  /** Salva o 3+1 escolhido e traz a equipe para o foco do painel. */
+  const handleAssign = async (group_id: number, template_ids: number[]) => {
+    await onAssignAbilities({ group_id, template_ids });
+    setTeamId(String(group_id));
   };
 
   // Dispensa do dado: resultado fica ~3.6s; sem resultado (polling falho) há
@@ -311,20 +322,24 @@ export function ConfigPanel({
       {/* Habilidades de equipe: 3 + 1 do professor, d20 no uso (ADR-019/021) */}
       {running && (
         <div className="space-y-2 border-t border-border pt-3">
-          <p className="text-[0.65rem] uppercase tracking-widest text-muted-foreground">Habilidades da equipe</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[0.65rem] uppercase tracking-widest text-muted-foreground">Habilidades da equipe</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              disabled={busy}
+              onClick={() => setPickerOpen(true)}
+            >
+              <Pencil /> {anyAbilities ? "Trocar" : "Escolher 3 + 1"}
+            </Button>
+          </div>
           {!anyAbilities ? (
             <p className="text-xs text-muted-foreground">
-              Nenhuma equipe tem habilidades atribuídas — sem elas não há
-              botões (o ataque padrão acima continua valendo, sem dado).
-              Para atribuir o 3+1 por tema, rode{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[0.65rem]">
-                manage.py seed_habilidades_equipe
-              </code>{" "}
-              ou use o admin/API do Django (model{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[0.65rem]">
-                GroupAbility
-              </code>
-              ).
+              Nenhuma equipe tem habilidades ainda — abra o seletor acima e
+              monte o <strong>3 + 1</strong> de cada equipe (um tema por
+              equipe). Sem elas o ataque padrão acima continua valendo, sem
+              dado.
             </p>
           ) : !selectedTeam ? (
             <p className="text-xs text-muted-foreground">
@@ -332,8 +347,8 @@ export function ConfigPanel({
             </p>
           ) : selectedTeam.abilities.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              {selectedTeam.group_name} não tem habilidades atribuídas
-              (professor escolhe 3 + 1 na equipe).
+              {selectedTeam.group_name} não tem habilidades — clique em
+              “Escolher 3 + 1” acima para montar o kit dela.
             </p>
           ) : (
             <>
@@ -396,6 +411,19 @@ export function ConfigPanel({
           )}
         </div>
       )}
+
+      {/* Seletor 3 + 1 (ADR-021): grava no backend e o painel repõe as cargas */}
+      <AbilityPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        teams={state.teams.map((team) => ({
+          groupId: team.group_id,
+          name: team.group_name,
+          templateIds: team.abilities.map((ability) => ability.template_id),
+        }))}
+        initialGroupId={teamId ? Number(teamId) : null}
+        onSave={handleAssign}
+      />
 
       {/* Animação do dado do destino (d20 só nas habilidades — ADR-019) */}
       {rolling != null && (

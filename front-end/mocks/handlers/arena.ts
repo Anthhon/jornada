@@ -189,6 +189,43 @@ const TEAM_TEMPLATES: Omit<MockTeamAbility, "id" | "charges_left">[] = [
   { template_id: 104, name: "Tempestade de Espinhos", kind: "ULTIMATE", effect: "STRIKE", value: 500, max_charges: 1 },
 ];
 
+/** Modelo do catálogo de habilidades (`GET /team-abilities/`, ADR-021). */
+interface TeamAbilityCatalogItem {
+  id: number;
+  theme: string;
+  name: string;
+  kind: string;
+  effect: string;
+  value: number;
+  max_charges: number;
+  description: string;
+}
+
+const FLORESTA_DESCRIPTIONS: Record<number, string> = {
+  101: "Raízes irrompem sob o chefe: 150 de dano direto (antes do d20).",
+  102: "Recupera até 40 pontos perdidos em retaliações do chefe.",
+  103: "O próximo ataque da equipe vale +30%.",
+  104: "Chuva de espinhos: 500 de dano direto ao chefe (antes do d20).",
+};
+
+/** 2 temas × (3 + 1) — espelha o seed real (Floresta atribuída no start). */
+const TEAM_ABILITY_CATALOG: TeamAbilityCatalogItem[] = [
+  ...TEAM_TEMPLATES.map((item) => ({
+    id: item.template_id,
+    theme: "Floresta",
+    name: item.name,
+    kind: item.kind,
+    effect: item.effect,
+    value: item.value,
+    max_charges: item.max_charges,
+    description: FLORESTA_DESCRIPTIONS[item.template_id] ?? "",
+  })),
+  { id: 105, theme: "Vulcão", name: "Lança de Magma", kind: "BASIC", effect: "STRIKE", value: 150, max_charges: 2, description: "Uma lança de rocha derretida: 150 de dano direto (antes do d20)." },
+  { id: 106, theme: "Vulcão", name: "Escudo de Basalto", kind: "BASIC", effect: "SHIELD", value: 60, max_charges: 2, description: "Escudo de 60 pontos: absorve retaliações e penalidades." },
+  { id: 107, theme: "Vulcão", name: "Ebulição", kind: "BASIC", effect: "BUFF", value: 30, max_charges: 2, description: "O próximo ataque da equipe vale +30%." },
+  { id: 108, theme: "Vulcão", name: "Erupção", kind: "ULTIMATE", effect: "STRIKE", value: 500, max_charges: 1, description: "O caldeirão explode: 500 de dano direto ao chefe (antes do d20)." },
+];
+
 /** Fatia do saque para quem desferiu o golpe final (ADR-018). */
 const FINAL_BLOW_SHARE = 0.1;
 
@@ -783,6 +820,58 @@ const ACTIONS = [
 export const arenaHandlers = [
   // Chefes para o formulário de nova rodada (o catálogo mock usa /mock-catalog/).
   http.get(`${API_BASE_URL}/bosses/`, () => HttpResponse.json(BOSSES)),
+
+  // Catálogo do picker 3+1 e gravação da escolha (ADR-021).
+  http.get(`${API_BASE_URL}/team-abilities/`, () => HttpResponse.json(TEAM_ABILITY_CATALOG)),
+
+  http.patch(`${API_BASE_URL}/groups/:id/`, async ({ request, params }) => {
+    if (!isMockTeacher(request)) return error("Acesso não autorizado.", 403);
+    let body: { abilities?: unknown };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return error("JSON inválido.");
+    }
+    const ids = Array.isArray(body.abilities) ? body.abilities.map(Number) : [];
+    if (ids.length !== 4 || new Set(ids).size !== 4) {
+      return error("Escolha exatamente 4 habilidades (3 básicas + 1 ultimate).");
+    }
+    const chosen = ids.map((id) => TEAM_ABILITY_CATALOG.find((item) => item.id === id));
+    if (chosen.some((item) => !item)) return error("Modelo de habilidade inexistente.");
+    const picks = chosen as TeamAbilityCatalogItem[];
+    if (picks.filter((item) => item.kind === "BASIC").length !== 3) {
+      return error("A escolha precisa ser 3 básicas + 1 ultimate.");
+    }
+    if (new Set(picks.map((item) => item.theme)).size !== 1) {
+      return error("As 4 habilidades precisam ser de um só tema (ADR-021).");
+    }
+    try {
+      const arena = read();
+      const key = String(Number(params.id));
+      const round = arena.rounds.find((item) =>
+        Object.prototype.hasOwnProperty.call(item.teams, key),
+      );
+      const team = round?.teams[key];
+      if (!round || !team) return error("Equipe não encontrada em nenhuma rodada.", 404);
+      // Mantém as cargas do que ficou; o que é novo nasce com a base
+      // (o renovar do painel reajusta pela escala da rodada).
+      const kept = new Map(team.abilities.map((item) => [item.template_id, item.charges_left]));
+      team.abilities = picks.map((item) => ({
+        id: item.id,
+        template_id: item.id,
+        name: item.name,
+        kind: item.kind,
+        effect: item.effect,
+        value: item.value,
+        max_charges: item.max_charges,
+        charges_left: kept.get(item.id) ?? item.max_charges,
+      }));
+      write(arena);
+      return HttpResponse.json({ id: Number(params.id), abilities: ids });
+    } catch {
+      return error("Não foi possível salvar as habilidades.", 500);
+    }
+  }),
 
   http.get(`${API_BASE_URL}/arena/rounds/`, () => {
     try {

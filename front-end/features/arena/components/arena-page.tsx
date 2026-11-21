@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { useArenaState } from "../hooks/use-arena-state";
 import { arenaService } from "../services/arena-service";
 import type { ArenaRound } from "../schemas/arena";
+import { apiErrorMessage } from "@/lib/api-error";
 import { BattleLog } from "./battle-log";
 import { BossCard } from "./boss-card";
 import { ConfigPanel } from "./config-panel";
@@ -77,7 +78,7 @@ function Arena() {
       retry();
       toast.success(success);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "A ação falhou.");
+      toast.error(apiErrorMessage(e, "A ação falhou."));
     } finally {
       setBusy(false);
     }
@@ -94,7 +95,7 @@ function Arena() {
       retry();
       return true;
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "A ação falhou.");
+      toast.error(apiErrorMessage(e, "A ação falhou."));
       return false;
     } finally {
       setBusy(false);
@@ -150,6 +151,33 @@ function Arena() {
   const handleRenewAbilities = (group_id: number) => {
     if (effectiveId) {
       void run(() => arenaService.renewAbilities(effectiveId, { group_id }), "Habilidades renovadas.");
+    }
+  };
+
+  /**
+   * Atribui o 3+1 do picker (`PATCH /groups/{id}/`) e, com a batalha
+   * rodando, repõe as cargas da equipe pela escala da rodada (ADR-020/021).
+   * Erros propagam para o sheet exibir; o sucesso avisa por toast.
+   */
+  const handleAssignAbilities = async (payload: { group_id: number; template_ids: number[] }) => {
+    if (!effectiveId) throw new Error("Nenhuma rodada selecionada.");
+    setBusy(true);
+    try {
+      await arenaService.assignAbilities(payload.group_id, payload.template_ids);
+      if (state?.status === "RUNNING" || state?.status === "PAUSED") {
+        try {
+          await arenaService.renewAbilities(effectiveId, { group_id: payload.group_id });
+          toast.success("Habilidades salvas · cargas da rodada repostas.");
+        } catch {
+          toast.success("Habilidades salvas.");
+          toast.error("Não foi possível repor as cargas — use Renovar cargas.");
+        }
+      } else {
+        toast.success("Habilidades salvas.");
+      }
+      retry();
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -230,6 +258,7 @@ function Arena() {
                 onApplyPerformance={handleApplyPerformance}
                 onUseAbility={handleUseAbility}
                 onRenewAbilities={handleRenewAbilities}
+                onAssignAbilities={handleAssignAbilities}
               />
             </div>
           )}
