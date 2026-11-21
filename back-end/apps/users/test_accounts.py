@@ -15,7 +15,14 @@ class BulkStudentTests(TestCase):
         grupo = Group.objects.create(name="Alfa")
         resp = staff_client().post(
             "/api/students/bulk/",
-            {"names": ["João da Silva", "  Maria  ", "Ana Souza"], "group": grupo.id},
+            {
+                "students": [
+                    {"name": "João da Silva", "matricula": "800001"},
+                    {"name": "  Maria  ", "matricula": "800002"},
+                    {"name": "Ana Souza", "matricula": "800003"},
+                ],
+                "group": grupo.id,
+            },
             format="json",
         )
         self.assertEqual(resp.status_code, 201, resp.data)
@@ -26,6 +33,11 @@ class BulkStudentTests(TestCase):
         self.assertEqual(set(resp.data[0]), {"id", "name", "username", "password"})
         self.assertEqual(resp.data[0]["username"], "joao.da.silva")
         self.assertEqual(Student.objects.filter(group=grupo).count(), 3)
+        # cada aluno nasceu com a matrícula informada
+        self.assertEqual(
+            set(Student.objects.values_list("matricula", flat=True)),
+            {"800001", "800002", "800003"},
+        )
 
         # a senha devolvida realmente loga
         login = APIClient().post(
@@ -38,7 +50,14 @@ class BulkStudentTests(TestCase):
 
     def test_usernames_repetidos_ganham_sufixo(self):
         resp = staff_client().post(
-            "/api/students/bulk/", {"names": ["Ana Lima", "Ana Lima"]}, format="json"
+            "/api/students/bulk/",
+            {
+                "students": [
+                    {"name": "Ana Lima", "matricula": "800011"},
+                    {"name": "Ana Lima", "matricula": "800012"},
+                ]
+            },
+            format="json",
         )
         self.assertEqual(
             [r["username"] for r in resp.data], ["ana.lima", "ana.lima2"]
@@ -46,29 +65,54 @@ class BulkStudentTests(TestCase):
 
     def test_senhas_diferentes_e_aluno_nao_e_professor(self):
         resp = staff_client().post(
-            "/api/students/bulk/", {"names": ["A", "B", "C"]}, format="json"
+            "/api/students/bulk/",
+            {
+                "students": [
+                    {"name": "A", "matricula": "800021"},
+                    {"name": "B", "matricula": "800022"},
+                    {"name": "C", "matricula": "800023"},
+                ]
+            },
+            format="json",
         )
         self.assertEqual(len({r["password"] for r in resp.data}), 3)
         self.assertFalse(User.objects.get(username="a").is_staff)
 
     def test_so_professor_cria_em_lote(self):
+        payload = {"students": [{"name": "X", "matricula": "800031"}]}
         self.assertEqual(
-            anon_client().post("/api/students/bulk/", {"names": ["X"]}, format="json").status_code,
+            anon_client().post("/api/students/bulk/", payload, format="json").status_code,
             401,
         )
         self.assertEqual(
-            user_client().post("/api/students/bulk/", {"names": ["X"]}, format="json").status_code,
+            user_client().post("/api/students/bulk/", payload, format="json").status_code,
             403,
         )
 
-    def test_lista_vazia_ou_grupo_invalido_rejeitado(self):
+    def test_entrada_invalida_rejeitada(self):
         client = staff_client()
-        self.assertEqual(client.post("/api/students/bulk/", {"names": []}, format="json").status_code, 400)
-        self.assertEqual(client.post("/api/students/bulk/", {"names": ["  "]}, format="json").status_code, 400)
-        self.assertEqual(
-            client.post("/api/students/bulk/", {"names": ["X"], "group": 999}, format="json").status_code, 400
-        )
-        self.assertFalse(Student.objects.exists())
+        valido = {"name": "X", "matricula": "800041"}
+
+        casos = [
+            {"students": []},                                            # lista vazia
+            {"students": [{"name": "  ", "matricula": "800042"}]},       # sem nome
+            {"students": [{"name": "X"}]},                               # sem matrícula
+            {"students": [{"name": "X", "matricula": "123"}]},           # 3 dígitos
+            {"students": [{"name": "X", "matricula": "1234567"}]},       # 7 dígitos
+            {"students": [{"name": "X", "matricula": "abcdef"}]},        # não numérica
+            # matrícula repetida dentro do lote
+            {"students": [valido, {"name": "Y", "matricula": "800041"}]},
+            # matrícula já cadastrada no banco
+            {"students": [{"name": "Y", "matricula": "900099"}]},
+            {"students": [valido], "group": 999},                        # grupo inexistente
+        ]
+        Student.objects.create(name="Ocupada", matricula="900099")
+
+        for caso in casos:
+            resp = client.post("/api/students/bulk/", caso, format="json")
+            self.assertEqual(resp.status_code, 400, caso)
+
+        self.assertEqual(Student.objects.count(), 1)
 
 
 class StudentOwnProfileTests(TestCase):
@@ -95,7 +139,7 @@ class StudentOwnProfileTests(TestCase):
 
 class StudentGradeAndDeactivateTests(TestCase):
     def test_professor_lanca_nota_individual(self):
-        aluno = Student.objects.create(name="Ana")
+        aluno = Student.objects.create(name="Ana", matricula="900021")
         client = staff_client()
         resp = client.patch(f"/api/students/{aluno.id}/", {"grade": "8.50"}, format="json")
         self.assertEqual(resp.status_code, 200)
@@ -104,7 +148,11 @@ class StudentGradeAndDeactivateTests(TestCase):
         self.assertEqual(invalida.status_code, 400)
 
     def test_desativar_aluno_bloqueia_o_login(self):
-        resp = staff_client().post("/api/students/bulk/", {"names": ["Ana"]}, format="json")
+        resp = staff_client().post(
+            "/api/students/bulk/",
+            {"students": [{"name": "Ana", "matricula": "800051"}]},
+            format="json",
+        )
         dados = resp.data[0]
         antes = APIClient().post(
             "/api/token/", {"username": dados["username"], "password": dados["password"]}, format="json"
@@ -121,8 +169,8 @@ class StudentGradeAndDeactivateTests(TestCase):
         self.assertEqual(depois.status_code, 401)
 
     def test_filtro_active(self):
-        Student.objects.create(name="On")
-        Student.objects.create(name="Off", is_active=False)
+        Student.objects.create(name="On", matricula="900022")
+        Student.objects.create(name="Off", is_active=False, matricula="900023")
         resp = staff_client().get("/api/students/?active=false")
         self.assertEqual([s["name"] for s in resp.data], ["Off"])
 

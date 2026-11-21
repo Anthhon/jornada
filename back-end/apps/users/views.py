@@ -96,7 +96,9 @@ class StudentViewSet(viewsets.ModelViewSet):
     def bulk(self, request):
         """Cria vários alunos de uma vez, cada um com login e senha gerados.
 
-        Corpo: ``{"names": ["Ana Souza", ...], "group": <id opcional>}``.
+        Corpo: ``{"students": [{"name": "...", "matricula": "123456"}, ...],
+        "group": <id opcional>}`` — matrícula **obrigatória** (6 dígitos,
+        única) em cada aluno.
         Resposta: só o que o professor precisa repassar —
         ``[{"id", "name", "username", "password"}]``. A senha só aparece aqui.
         """
@@ -106,12 +108,17 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         created = []
         with transaction.atomic():
-            for name in data.validated_data['names']:
+            for item in data.validated_data['students']:
                 password = _new_password()
                 user = User.objects.create_user(
-                    username=_new_username(name), password=password
+                    username=_new_username(item['name']), password=password
                 )
-                student = Student.objects.create(name=name, user=user, group=group)
+                student = Student.objects.create(
+                    name=item['name'],
+                    matricula=item['matricula'],
+                    user=user,
+                    group=group,
+                )
                 created.append({
                     'id': student.id,
                     'name': student.name,

@@ -101,10 +101,10 @@ class GroupManagementTests(TestCase):
         self.Student = Student
         self.grupo = Group.objects.create(name="Alfa")
         self.outro = Group.objects.create(name="Beta")
-        self.ana = Student.objects.create(name="Ana", group=self.grupo)
-        self.bia = Student.objects.create(name="Bia", group=self.grupo)
-        self.caio = Student.objects.create(name="Caio", group=self.outro)
-        self.davi = Student.objects.create(name="Davi")
+        self.ana = Student.objects.create(name="Ana", group=self.grupo, matricula="900001")
+        self.bia = Student.objects.create(name="Bia", group=self.grupo, matricula="900002")
+        self.caio = Student.objects.create(name="Caio", group=self.outro, matricula="900003")
+        self.davi = Student.objects.create(name="Davi", matricula="900004")
 
     def test_set_members_substitui_a_lista_inteira(self):
         resp = staff_client().post(

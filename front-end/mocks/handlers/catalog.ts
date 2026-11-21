@@ -26,6 +26,8 @@ export const catalogHandlers = (Object.keys(catalogSchemas) as CatalogResource[]
         if ("name" in item && list.some((other) => "name" in other && other.id !== item.id && other.name.toLocaleLowerCase("pt-BR") === item.name.toLocaleLowerCase("pt-BR"))) return error("Já existe um cadastro com este nome.");
         if (resource === "students") {
           const student = catalogSchemas.students.parse(item);
+          // Regra da matrícula: exatamente 6 dígitos (mesma do back-end).
+          if (!/^\d{6}$/.test(student.registration)) return error("A matrícula deve ter exatamente 6 dígitos.");
           if (db.students.some((other) => other.id !== student.id && other.registration === student.registration)) return error("Matrícula já cadastrada.");
           db.students = [...db.students.filter((other) => other.id !== student.id), student];
         } else if (resource === "groups") {

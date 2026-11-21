@@ -11,6 +11,6 @@ class ProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ("name", "group", "user", "grade", "is_active")
+    list_display = ("matricula", "name", "group", "user", "grade", "is_active")
     list_filter = ("group",)
-    search_fields = ("name", "user__username")
+    search_fields = ("matricula", "name", "user__username")
