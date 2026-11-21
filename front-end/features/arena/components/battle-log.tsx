@@ -7,6 +7,7 @@ import {
   Flag,
   Flame,
   Gem,
+  Pencil,
   Play,
   Skull,
   Sparkles,
@@ -28,6 +29,8 @@ function eventIcon(kind: string) {
       return <Flag className="h-4 w-4 text-muted-foreground" aria-hidden />;
     case "PAUSE":
       return <AlertTriangle className="h-4 w-4 text-info" aria-hidden />;
+    case "EDIT":
+      return <Pencil className="h-4 w-4 text-muted-foreground" aria-hidden />;
     default:
       return <Play className="h-4 w-4 text-info" aria-hidden />;
   }

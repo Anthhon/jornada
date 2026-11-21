@@ -1022,3 +1022,247 @@ class ArenaConfigOverrideTests(TestCase):
         self.assertIn(
             "Equipe não registrada nesta batalha.", str(resp.data)
         )
+
+
+class ArenaRoundManagementTests(TestCase):
+    """Gerência de rodadas na tela de configuração (M-50).
+
+    Excluir a disputa, reabrir (estornando recompensa e saque),
+    editar/restaurar o PV do chefe e desfazer as últimas ações.
+    """
+
+    def setUp(self):
+        self.boss = Boss.objects.create(name="Vigia", max_hp=1000)
+        self.group = Group.objects.create(name="Equipe Alfa")
+
+    def _round(self, **payload):
+        base = {
+            "name": "Rodada Gestão", "boss": self.boss.id,
+            "balance_ref_teams": 0, "max_hp": 1000,
+        }
+        base.update(payload)
+        resp = staff_client().post("/api/arena/rounds/", base, format="json")
+        self.assertEqual(resp.status_code, 201)
+        return resp.data["id"]
+
+    def _post(self, rid, action, payload=None, client=None):
+        return (client or staff_client()).post(
+            f"/api/arena/rounds/{rid}/{action}/",
+            payload or {}, format="json",
+        )
+
+    def test_reabrir_estorna_recompensa_e_volta_para_running(self):
+        rid = self._round()
+        client = staff_client()
+        self.assertEqual(self._post(rid, "start", client=client).status_code, 200)
+        self.assertEqual(
+            self._post(rid, "damage",
+                       {"group_id": self.group.id, "damage": 300},
+                       client=client).status_code, 200,
+        )
+        self.assertEqual(self._post(rid, "end", client=client).status_code, 200)
+        round_obj = ArenaRound.objects.get(id=rid)
+        self.assertEqual(round_obj.status, "ENDED")
+        self.assertIsNotNone(round_obj.finished_at)
+        self.assertTrue(round_obj.rewards_credited)
+        self.assertEqual(Group.objects.get(id=self.group.id).points, 300)
+
+        resp = self._post(rid, "reopen", client=client)
+        self.assertEqual(resp.status_code, 200)
+        round_obj.refresh_from_db()
+        self.assertEqual(round_obj.status, "RUNNING")
+        self.assertEqual(round_obj.outcome, "")
+        self.assertFalse(round_obj.rewards_credited)
+        self.assertIsNone(round_obj.finished_at)
+        self.assertEqual(Group.objects.get(id=self.group.id).points, 0)
+        self.assertEqual(
+            round_obj.events.order_by("-id").first().message,
+            "Disputa reaberta pelo professor.",
+        )
+
+    def test_reabrir_só_quando_encerrada(self):
+        rid = self._round()
+        resp = self._post(rid, "reopen")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("encerrada", str(resp.data))
+        self._post(rid, "start")
+        resp = self._post(rid, "reopen")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_set_hp_clampa_e_registra_evento(self):
+        rid = self._round()
+        resp = self._post(rid, "set-hp", {"hp": 99999})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(ArenaRound.objects.get(id=rid).hp, 1000)
+
+        resp = self._post(rid, "set-hp", {"hp": 400})
+        self.assertEqual(resp.status_code, 200)
+        round_obj = ArenaRound.objects.get(id=rid)
+        self.assertEqual(round_obj.hp, 400)
+        ultimo = round_obj.events.order_by("-id").first()
+        self.assertEqual(ultimo.kind, "EDIT")
+        self.assertIn("1000 → 400", ultimo.message)
+
+        resp = self._post(rid, "set-hp", {"hp": -5})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_set_hp_funciona_em_encerrada(self):
+        rid = self._round()
+        self._post(rid, "start")
+        self._post(rid, "end")
+        resp = self._post(rid, "set-hp", {"hp": 800})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(ArenaRound.objects.get(id=rid).hp, 800)
+
+    def test_desfazer_encadeia_e_trunca_o_log(self):
+        rid = self._round()
+        client = staff_client()
+        # Três ações com checkpoint: placar em CONFIG, start e dano manual.
+        self.assertEqual(
+            self._post(rid, "override",
+                       {"group_id": self.group.id, "amount": 420},
+                       client=client).status_code, 200,
+        )
+        self.assertEqual(self._post(rid, "start", client=client).status_code, 200)
+        self.assertEqual(
+            self._post(rid, "damage",
+                       {"group_id": self.group.id, "damage": 300},
+                       client=client).status_code, 200,
+        )
+        round_obj = ArenaRound.objects.get(id=rid)
+        self.assertEqual(round_obj.hp, 700)
+        self.assertEqual(round_obj.turn, 1)
+
+        # 1) Desfazer o dano: estado volta, o lote sai, a nota fica.
+        self.assertEqual(self._post(rid, "undo", client=client).status_code, 200)
+        round_obj.refresh_from_db()
+        self.assertEqual(round_obj.hp, 1000)
+        self.assertEqual(round_obj.turn, 0)
+        self.assertEqual(round_obj.status, "RUNNING")
+        kinds = list(round_obj.events.values_list("kind", flat=True))
+        self.assertNotIn("DAMAGE", kinds)
+        self.assertEqual(kinds[-1], "EDIT")
+        self.assertEqual(
+            round_obj.contributions.get(group_id=self.group.id).battle_damage, 0,
+        )
+
+        # 2) Desfazer o start: volta a CONFIG (o placar anterior permanece).
+        self.assertEqual(self._post(rid, "undo", client=client).status_code, 200)
+        round_obj.refresh_from_db()
+        self.assertEqual(round_obj.status, "CONFIG")
+        self.assertIsNone(round_obj.started_at)
+        self.assertFalse(round_obj.events.filter(kind="START").exists())
+
+        # 3) Desfazer o placar: some o registro da equipe.
+        self.assertEqual(self._post(rid, "undo", client=client).status_code, 200)
+        round_obj.refresh_from_db()
+        self.assertFalse(round_obj.contributions.exists())
+        self.assertFalse(round_obj.events.filter(kind="REWARD").exists())
+
+        # 4) Não há mais nada a desfazer.
+        resp = self._post(rid, "undo", client=client)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("Nada para desfazer", str(resp.data))
+
+    def test_desfazer_bloqueado_com_recompensa_e_livre_apos_reabrir(self):
+        rid = self._round()
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        self._post(rid, "damage",
+                   {"group_id": self.group.id, "damage": 300}, client=client)
+        self._post(rid, "end", client=client)
+
+        resp = self._post(rid, "undo", client=client)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("encerrada com recompensas", str(resp.data))
+
+        # Reabrir estorna (pontos zerados) e daí o desfazer atravessa o fim.
+        self.assertEqual(self._post(rid, "reopen", client=client).status_code, 200)
+        self.assertEqual(Group.objects.get(id=self.group.id).points, 0)
+        resp = self._post(rid, "undo", client=client)
+        self.assertEqual(resp.status_code, 200)
+        round_obj = ArenaRound.objects.get(id=rid)
+        self.assertEqual(round_obj.status, "RUNNING")
+        self.assertEqual(round_obj.hp, 1000)
+        self.assertFalse(round_obj.events.filter(kind="END").exists())
+        self.assertFalse(round_obj.events.filter(kind="REWARD").exists())
+
+    def test_reabrir_vitória_estorna_saque_do_golpe_final(self):
+        outro = Group.objects.create(name="Equipe Beta")
+        rid = self._round(max_hp=100, treasure=1000)
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        # A derruba com pouco dano; B causou mais. O saque prova quem
+        # derrubou (golpe final recebe 10% + sobra) e não quem bateu mais.
+        for gid, points in ((self.group.id, 10), (outro.id, 80),
+                            (self.group.id, 10)):
+            self.assertEqual(
+                self._post(rid, "attack",
+                           {"group_id": gid, "correct": True, "points": points},
+                           client=client).status_code, 200,
+            )
+        round_obj = ArenaRound.objects.get(id=rid)
+        self.assertEqual(round_obj.status, "ENDED")
+        self.assertEqual(round_obj.outcome, "VICTORY")
+        self.assertEqual(round_obj.killing_team, self.group.id)
+        # A: 20 de dano − 4 de retaliação + 280 de saque; B: 80 − 20 + 720.
+        self.assertEqual(Group.objects.get(id=self.group.id).points, 296)
+        self.assertEqual(Group.objects.get(id=outro.id).points, 780)
+
+        resp = self._post(rid, "reopen", client=client)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Group.objects.get(id=self.group.id).points, 0)
+        self.assertEqual(Group.objects.get(id=outro.id).points, 0)
+
+    def test_duplicar_cria_copia_em_config_sem_historico(self):
+        rid = self._round()
+        client = staff_client()
+        resp = staff_client().patch(
+            f"/api/arena/rounds/{rid}/",
+            {"date": "2026-05-10", "deadline": "2026-05-17"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self._post(rid, "start", client=client)
+        self._post(rid, "damage",
+                   {"group_id": self.group.id, "damage": 300}, client=client)
+
+        resp = self._post(rid, "duplicate", client=client)
+        self.assertEqual(resp.status_code, 201)
+        copy_id = resp.data["id"]
+        self.assertNotEqual(copy_id, rid)
+        copy = ArenaRound.objects.get(id=copy_id)
+        original = ArenaRound.objects.get(id=rid)
+        self.assertEqual(copy.status, "CONFIG")
+        self.assertEqual(copy.hp, copy.max_hp)
+        self.assertEqual(copy.turn, 0)
+        self.assertEqual(copy.name, f"{original.name} (cópia)")
+        self.assertEqual(copy.date, original.date)
+        self.assertEqual(copy.deadline, original.deadline)
+        self.assertEqual(copy.treasure, original.treasure)
+        self.assertFalse(copy.contributions.exists())
+        self.assertFalse(copy.events.exists())
+        self.assertIsNone(copy.started_at)
+        self.assertFalse(copy.rewards_credited)
+        # A original fica intacta.
+        self.assertEqual(original.status, "RUNNING")
+        self.assertEqual(original.hp, 700)
+
+    def test_excluir_rodada(self):
+        rid = self._round()
+        resp = staff_client().delete(f"/api/arena/rounds/{rid}/")
+        self.assertEqual(resp.status_code, 204)
+        self.assertFalse(ArenaRound.objects.filter(id=rid).exists())
+        resp = staff_client().get(f"/api/arena/rounds/{rid}/")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_override_em_encerrada_erro(self):
+        rid = self._round()
+        client = staff_client()
+        self._post(rid, "start", client=client)
+        self._post(rid, "end", client=client)
+        resp = self._post(rid, "override",
+                          {"group_id": self.group.id, "amount": 50},
+                          client=client)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("reabra", str(resp.data))

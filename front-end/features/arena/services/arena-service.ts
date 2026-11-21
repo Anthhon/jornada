@@ -88,6 +88,17 @@ async function post(id: number, action: string, payload: unknown = {}) {
   return data;
 }
 
+/** Exclui a rodada e todo o registro dela (`DELETE /arena/rounds/{id}/`). */
+async function removeRound(id: number): Promise<void> {
+  await api.delete(`${base}/${id}/`);
+}
+
+/** Duplica a rodada: devolve a cópia em CONFIG, sem histórico (M-50). */
+async function duplicateRound(id: number): Promise<ArenaRound> {
+  const data = await post(id, "duplicate");
+  return arenaRoundSchema.parse(data);
+}
+
 export const arenaService = {
   list: listRounds,
   getState,
@@ -97,10 +108,18 @@ export const arenaService = {
   listGroups,
   updateRound,
   create: createRound,
+  remove: removeRound,
+  duplicate: duplicateRound,
   start: (id: number) => post(id, "start"),
   pause: (id: number) => post(id, "pause"),
   resume: (id: number) => post(id, "resume"),
   end: (id: number) => post(id, "end"),
+  /** Reabre uma disputa encerrada (estorna recompensa e saque — M-50). */
+  reopen: (id: number) => post(id, "reopen"),
+  /** Ajuste do PV do chefe — restaurar manda o PV máximo (M-50). */
+  setHp: (id: number, hp: number) => post(id, "set-hp", { hp }),
+  /** Desfaz a última ação registrada (M-50). */
+  undo: (id: number) => post(id, "undo"),
   attack: (id: number, payload: { group_id: number; correct: boolean; points: number }) =>
     post(id, "attack", payload),
   applyPerformance: (

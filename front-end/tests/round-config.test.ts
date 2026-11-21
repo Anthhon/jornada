@@ -5,7 +5,9 @@ import {
   baseDraft,
   changedRoundFields,
   isDraftDirty,
+  isOverdue,
   scoreOverrides,
+  todayIso,
 } from "../features/arena/lib/round-config";
 import type { ArenaGroupOption, ArenaRound } from "../features/arena/schemas/arena";
 
@@ -111,4 +113,19 @@ test("isDraftDirty: limpo contra a base, sujo com qualquer troca", () => {
     isDraftDirty(base, { ...base, multiplier: "3" }, { includeRules: false }),
     false,
   );
+});
+
+test("isOverdue: prazo vencido só antes do fim da disputa (M-50)", () => {
+  assert.equal(isOverdue("2026-01-01", "RUNNING", "2026-06-01"), true);
+  assert.equal(isOverdue("2026-01-01", "CONFIG", "2026-06-01"), true);
+  // Encerrada não avisa mais; no mesmo dia o prazo ainda está de pé.
+  assert.equal(isOverdue("2026-01-01", "ENDED", "2026-06-01"), false);
+  assert.equal(isOverdue("2026-06-01", "RUNNING", "2026-06-01"), false);
+  assert.equal(isOverdue("2026-07-01", "RUNNING", "2026-06-01"), false);
+  assert.equal(isOverdue("", "RUNNING", "2026-06-01"), false);
+});
+
+test("todayIso: AAAA-MM-DD com dois dígitos (fuso local)", () => {
+  assert.equal(todayIso(new Date(2026, 0, 5)), "2026-01-05");
+  assert.equal(todayIso(new Date(2026, 10, 21)), "2026-11-21");
 });

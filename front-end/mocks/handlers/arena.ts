@@ -11,8 +11,8 @@ import { isMockTeacher } from "../mock-teacher";
  * Persiste em `localStorage` (fallback em memória), como a agenda.
  */
 
-/** v3: saque/desfecho, escala do bando, habilidades de equipe com d20 (ADR-018..021). */
-const storageKey = "jornada-mock-arena-v3";
+/** v4: gerência de rodadas — reabrir/estorno, PV editável, desfazer (M-50). */
+const storageKey = "jornada-mock-arena-v4";
 
 type Status = "CONFIG" | "RUNNING" | "PAUSED" | "ENDED";
 
@@ -80,6 +80,8 @@ interface MockEvent {
   ability_id: number | null;
   ability_name: string | null;
   created_at: string | null;
+  /** Checkpoint antes da ação reversível (desfazer, M-50) — não vira estado. */
+  snapshot?: unknown;
 }
 
 interface MockRound {
@@ -346,7 +348,8 @@ function toState(round: MockRound) {
     outcome: round.outcome,
     balance: balanceFactor(round),
     boss: round.boss,
-    events: round.events,
+    // O checkpoint (M-50) é interno: some do estado público, como no back.
+    events: round.events.map((ev) => ({ ...ev, snapshot: undefined })),
     rewards_credited: round.rewards_credited,
     teams,
   };
@@ -402,6 +405,30 @@ function logEvent(
     ability_name: extra.ability_name ?? null,
     created_at: new Date().toISOString(),
   });
+}
+
+/** Estado de batalha antes da ação — checkpoint do desfazer (M-50). */
+function snapshotRound(round: MockRound): Record<string, unknown> {
+  return {
+    hp: round.hp,
+    turn: round.turn,
+    status: round.status,
+    outcome: round.outcome,
+    killing_team: round.killing_team,
+    rewards_credited: round.rewards_credited,
+    teams: structuredClone(round.teams),
+  };
+}
+
+function restoreRound(round: MockRound, snapshot: Record<string, unknown>): void {
+  round.hp = snapshot.hp as number;
+  round.turn = snapshot.turn as number;
+  round.status = snapshot.status as Status;
+  round.outcome = snapshot.outcome as MockRound["outcome"];
+  round.killing_team = snapshot.killing_team as number | null;
+  round.rewards_credited = snapshot.rewards_credited as boolean;
+  // Equipes registradas depois do checkpoint (ex.: start) somem de volta.
+  round.teams = structuredClone(snapshot.teams as MockRound["teams"]);
 }
 
 function creditRewards(arena: MockArena, round: MockRound): void {
@@ -658,6 +685,17 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
       creditRewards(arena, round);
       return null;
     }
+    case "reopen": {
+      if (round.status !== "ENDED") return "Só é possível reabrir uma disputa encerrada.";
+      // Estorno: o mock não grava pontos de grupo — zera a bandeira e o
+      // desfecho, como o `reopen_round` do back faz com Group.points.
+      round.status = "RUNNING";
+      round.outcome = "";
+      round.killing_team = null;
+      round.rewards_credited = false;
+      logEvent(arena, round, "RESUME", "SYSTEM", null, 0, "Disputa reaberta pelo professor.");
+      return null;
+    }
     case "attack": {
       if (notRunning) return notRunning;
       const groupId = Number(body.group_id);
@@ -752,6 +790,9 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
       return null;
     }
     case "override": {
+      if (round.status === "ENDED") {
+        return "A disputa está encerrada — reabra para ajustar o placar.";
+      }
       const groupId = Number(body.group_id);
       let team = round.teams[String(groupId)];
       if (!team) {
@@ -782,7 +823,8 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
         round.teams[String(groupId)] = team;
       }
       const amount = Math.trunc(Number(body.amount) || 0);
-      if (!amount) return null;
+      // Igual ao `adjust_points` do back: sempre registra (mesmo 0) —
+      // assim a ação tem evento e vira checkpoint do desfazer.
       team.manual_adjustment += amount;
       logEvent(arena, round, "REWARD", "SYSTEM", groupId, amount, `Ajuste manual de ${amount} pontos na equipe.`);
       return null;
@@ -853,6 +895,38 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
       logEvent(arena, round, "ABILITY", "SYSTEM", groupId, 0, "Habilidades da equipe renovadas.");
       return null;
     }
+    case "set-hp": {
+      const value = Math.trunc(Number(body.hp));
+      if (!Number.isFinite(value) || value < 0) return "PV inválido.";
+      const next = Math.min(round.max_hp, value);
+      if (next === round.hp) return null;
+      const before = round.hp;
+      round.hp = next;
+      if (next > 0) round.killing_team = null; // chefe revivido: golpe final vale de novo
+      logEvent(arena, round, "EDIT", "SYSTEM", null, next - before,
+        `PV do chefe ajustado: ${before} → ${next}.`);
+      return null;
+    }
+    case "undo": {
+      let index = -1;
+      for (let i = round.events.length - 1; i >= 0; i--) {
+        if (round.events[i].snapshot !== undefined) {
+          index = i;
+          break;
+        }
+      }
+      if (index < 0) return "Nada para desfazer.";
+      const crossesEnd = round.events
+        .slice(index + 1)
+        .some((ev) => ev.kind === "END");
+      if (crossesEnd && round.rewards_credited) {
+        return "Não dá para desfazer: a disputa foi encerrada com recompensas creditadas. Reabra a disputa para voltar atrás.";
+      }
+      restoreRound(round, round.events[index].snapshot as Record<string, unknown>);
+      round.events = round.events.slice(0, index);
+      logEvent(arena, round, "EDIT", "SYSTEM", null, 0, "Última ação desfeita.");
+      return null;
+    }
     default:
       return "Ação desconhecida.";
   }
@@ -860,8 +934,13 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
 
 const ACTIONS = [
   "start", "pause", "resume", "end", "attack", "apply-performance", "damage", "override",
-  "use-ability", "renew-abilities",
+  "use-ability", "renew-abilities", "reopen", "set-hp", "undo",
 ];
+
+/** Ações que geram checkpoint no primeiro evento (desfazer, M-50). */
+const REVERSIBLE_ACTIONS = ACTIONS.filter(
+  (action) => !["end", "reopen", "undo"].includes(action),
+);
 
 export const arenaHandlers = [
   // Chefes para o formulário de nova rodada (o catálogo mock usa /mock-catalog/).
@@ -1067,6 +1146,47 @@ export const arenaHandlers = [
     }
   }),
 
+  // Duplicar (M-50): cópia em CONFIG, sem histórico — devolve a nova.
+  http.post(`${API_BASE_URL}/arena/rounds/:id/duplicate/`, async ({ request, params }) => {
+    if (!isMockTeacher(request)) return error("Acesso não autorizado.", 403);
+    try {
+      const arena = read();
+      const round = arena.rounds.find((item) => item.id === Number(params.id));
+      if (!round) return error("Rodada não encontrada.", 404);
+      const copy: MockRound = structuredClone(round);
+      copy.id = arena.nextRoundId++;
+      copy.name = `${round.name} (cópia)`;
+      copy.status = "CONFIG";
+      copy.hp = copy.max_hp;
+      copy.turn = 0;
+      copy.outcome = "";
+      copy.killing_team = null;
+      copy.teams = {};
+      copy.events = [];
+      copy.rewards_credited = false;
+      arena.rounds.unshift(copy);
+      write(arena);
+      return HttpResponse.json(toSummary(copy), { status: 201 });
+    } catch {
+      return error("Não foi possível duplicar a rodada.", 500);
+    }
+  }),
+
+  // Excluir a disputa e todo o registro (M-50).
+  http.delete(`${API_BASE_URL}/arena/rounds/:id/`, async ({ request, params }) => {
+    if (!isMockTeacher(request)) return error("Acesso não autorizado.", 403);
+    try {
+      const arena = read();
+      const index = arena.rounds.findIndex((item) => item.id === Number(params.id));
+      if (index < 0) return error("Rodada não encontrada.", 404);
+      arena.rounds.splice(index, 1);
+      write(arena);
+      return new HttpResponse(null, { status: 204 });
+    } catch {
+      return error("Não foi possível excluir a rodada.", 500);
+    }
+  }),
+
   ...ACTIONS.map((action) =>
     http.post(`${API_BASE_URL}/arena/rounds/:id/${action}/`, async ({ request, params }) => {
       if (!isMockTeacher(request)) return error("Acesso não autorizado.", 403);
@@ -1080,8 +1200,14 @@ export const arenaHandlers = [
         const arena = read();
         const round = arena.rounds.find((item) => item.id === Number(params.id));
         if (!round) return error("Rodada não encontrada.", 404);
+        const checkpoint =
+          REVERSIBLE_ACTIONS.includes(action) ? snapshotRound(round) : null;
+        const eventsBefore = round.events.length;
         const failure = applyAction(arena, round, action, body);
         if (failure) return error(failure);
+        if (checkpoint !== null && round.events.length > eventsBefore) {
+          round.events[eventsBefore].snapshot = checkpoint;
+        }
         write(arena);
         return HttpResponse.json(toState(round));
       } catch {

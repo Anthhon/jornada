@@ -15,6 +15,7 @@ from .serializers import (
     OverrideSerializer,
     PerformanceSerializer,
     RenewAbilitiesSerializer,
+    SetHpSerializer,
     UseAbilitySerializer,
 )
 
@@ -67,6 +68,35 @@ class ArenaRoundViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def end(self, request, pk=None):
         return self._run(request, services.end_round, self.get_object())
+
+    @action(detail=True, methods=["post"])
+    def reopen(self, request, pk=None):
+        """Reabre uma disputa encerrada, estornando recompensa e saque (M-50)."""
+        return self._run(request, services.reopen_round, self.get_object())
+
+    @action(detail=True, methods=["post"], url_path="set-hp")
+    def set_hp(self, request, pk=None):
+        """Ajusta o PV do chefe (restaurar manda o PV máximo — M-50)."""
+        serializer = SetHpSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self._run(
+            request, services.set_hp_round, self.get_object(),
+            serializer.validated_data["hp"],
+        )
+
+    @action(detail=True, methods=["post"])
+    def undo(self, request, pk=None):
+        """Desfaz a última ação com checkpoint e trunca o log (M-50)."""
+        return self._run(request, services.undo_round, self.get_object())
+
+    @action(detail=True, methods=["post"])
+    def duplicate(self, request, pk=None):
+        """Cópia da rodada em CONFIG, sem histórico — devolve a nova (M-50)."""
+        try:
+            copy = services.duplicate_round(self.get_object())
+        except engine.ArenaError as exc:
+            raise ValidationError(str(exc))
+        return Response(ArenaRoundSerializer(copy).data, status=201)
 
     @action(detail=True, methods=["post"])
     def attack(self, request, pk=None):

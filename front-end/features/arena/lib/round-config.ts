@@ -127,3 +127,22 @@ export function isDraftDirty(
     scoreOverrides(base, draft).length > 0
   );
 }
+
+/** Data de hoje em `AAAA-MM-DD` (fuso local — comparação lexicográfica). */
+export function todayIso(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * Prazo vencido (M-50): a entrega passou e a disputa ainda não terminou —
+ * a UI avisa o professor para remarcar ou cobrar as equipes.
+ */
+export function isOverdue(
+  deadline: string,
+  status: string,
+  today: string = todayIso(),
+): boolean {
+  return Boolean(deadline) && status !== "ENDED" && deadline < today;
+}

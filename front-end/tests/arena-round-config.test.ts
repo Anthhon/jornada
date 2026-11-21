@@ -47,3 +47,62 @@ test("listGroups rejeita resposta fora do contrato", async () => {
   server.use(http.get(`${API_BASE_URL}/groups/`, () => HttpResponse.json([{ id: 1 }])));
   await assert.rejects(() => arenaService.listGroups());
 });
+
+let action: { path: string; body: unknown } | null = null;
+let deleted: string | null = null;
+
+test("setHp faz POST set-hp com o valor (M-50)", async () => {
+  server.use(
+    http.post(`${API_BASE_URL}/arena/rounds/:id/set-hp/`, async ({ request, params }) => {
+      action = { path: String(params.id), body: await request.json() };
+      return HttpResponse.json({ id: Number(params.id) });
+    }),
+  );
+  await arenaService.setHp(7, 1200);
+  assert.deepEqual(action, { path: "7", body: { hp: 1200 } });
+});
+
+test("reopen e undo fazem POST sem corpo", async () => {
+  const calls: string[] = [];
+  server.use(
+    http.post(`${API_BASE_URL}/arena/rounds/:id/reopen/`, ({ params }) => {
+      calls.push(`reopen:${params.id}`);
+      return HttpResponse.json({ id: Number(params.id) });
+    }),
+    http.post(`${API_BASE_URL}/arena/rounds/:id/undo/`, ({ params }) => {
+      calls.push(`undo:${params.id}`);
+      return HttpResponse.json({ id: Number(params.id) });
+    }),
+  );
+  await arenaService.reopen(4);
+  await arenaService.undo(4);
+  assert.deepEqual(calls, ["reopen:4", "undo:4"]);
+});
+
+test("duplicate devolve a cópia validada pelo zod", async () => {
+  server.use(
+    http.post(`${API_BASE_URL}/arena/rounds/:id/duplicate/`, () =>
+      HttpResponse.json(
+        {
+          id: 9, name: "X (cópia)", boss: 1, status: "CONFIG",
+          level: 1, max_hp: 100, hp: 100, date: null, deadline: null,
+        },
+        { status: 201 },
+      )),
+  );
+  const copy = await arenaService.duplicate(4);
+  assert.equal(copy.id, 9);
+  assert.equal(copy.status, "CONFIG");
+  assert.equal(copy.hp, 100);
+});
+
+test("remove faz DELETE /arena/rounds/{id}/", async () => {
+  server.use(
+    http.delete(`${API_BASE_URL}/arena/rounds/:id/`, ({ params }) => {
+      deleted = String(params.id);
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  await arenaService.remove(3);
+  assert.equal(deleted, "3");
+});

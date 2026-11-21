@@ -9,10 +9,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Dices,
+  Flag,
   Gem,
+  Heart,
+  Pause,
+  Play,
   RefreshCw,
   Scroll,
+  Trash2,
 } from "@/components/icons/rpg-icons";
 import {
   EmptyState,
@@ -30,6 +46,7 @@ import {
   baseDraft,
   changedRoundFields,
   isDraftDirty,
+  isOverdue,
   scoreOverrides,
   type RoundConfigDraft,
 } from "../lib/round-config";
@@ -63,6 +80,11 @@ export function RoundConfigPage() {
     draft: RoundConfigDraft;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [hpDraft, setHpDraft] = useState<{
+    roundId: number;
+    value: string;
+  } | null>(null);
 
   // Busca compartilhada (sem setState — o effect só lê em callback).
   const fetchAll = useCallback(
@@ -113,6 +135,11 @@ export function RoundConfigPage() {
       : base;
   const scope = { includeRules: round?.status === "CONFIG" };
   const dirty = base && draft ? isDraftDirty(base, draft, scope) : false;
+  // PV editável: rascunho por rodada, derivado na renderização (M-50).
+  const hpValue =
+    hpDraft && hpDraft.roundId === effectiveId
+      ? hpDraft.value
+      : String(round?.hp ?? "");
 
   const updateDraft = (fn: (current: RoundConfigDraft) => RoundConfigDraft) => {
     if (!draft || effectiveId == null) return;
@@ -155,6 +182,84 @@ export function RoundConfigPage() {
   const restore = () => {
     setDraftStored(null);
     toast.message("Alterações restauradas.");
+  };
+
+  /** Ação imediata (ciclo, PV, desfazer…): roda, recarrega e avisa. */
+  const runAction = async (
+    fn: () => Promise<unknown>,
+    success: string,
+  ): Promise<boolean> => {
+    if (!round) return false;
+    setBusy(true);
+    try {
+      await fn();
+      await loadAll();
+      toast.success(success);
+      return true;
+    } catch (e) {
+      await loadAll();
+      toast.error(apiErrorMessage(e, "Ação não concluída."));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyHp = async () => {
+    if (!round) return;
+    const parsed = Number(hpValue);
+    if (hpValue.trim() === "" || !Number.isFinite(parsed) || parsed < 0) {
+      toast.error("PV inválido — informe um número ≥ 0.");
+      return;
+    }
+    const done = await runAction(
+      () => arenaService.setHp(round.id, Math.round(parsed)),
+      "PV do chefe atualizado.",
+    );
+    if (done) setHpDraft(null);
+  };
+
+  const restoreHp = async () => {
+    if (!round) return;
+    const done = await runAction(
+      () => arenaService.setHp(round.id, round.max_hp),
+      "PV do chefe restaurado.",
+    );
+    if (done) setHpDraft(null);
+  };
+
+  const duplicate = async () => {
+    if (!round) return;
+    setBusy(true);
+    try {
+      const copy = await arenaService.duplicate(round.id);
+      setSelectedId(copy.id);
+      setDraftStored(null);
+      await loadAll();
+      toast.success(`Rodada duplicada: ${copy.name}.`);
+    } catch (e) {
+      await loadAll();
+      toast.error(apiErrorMessage(e, "Não foi possível duplicar a rodada."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!round) return;
+    setBusy(true);
+    try {
+      await arenaService.remove(round.id);
+      setSelectedId(null);
+      setDraftStored(null);
+      await loadAll();
+      toast.success("Rodada excluída.");
+    } catch (e) {
+      await loadAll();
+      toast.error(apiErrorMessage(e, "Não foi possível excluir a rodada."));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const cancel = () => router.push("/arena");
@@ -206,8 +311,8 @@ export function RoundConfigPage() {
         />
       ) : round && base && draft ? (
         <>
-          {/* Barra superior: rodada, datas e status (mockup). */}
-          <div className="grid grid-cols-2 gap-4 rounded-lg border border-border bg-background p-4 md:grid-cols-4">
+          {/* Barra superior: rodada, datas, PV do chefe e status (mockup). */}
+          <div className="grid grid-cols-2 gap-4 rounded-lg border border-border bg-background p-4 md:grid-cols-3 xl:grid-cols-5">
             <Field label="Rodada">
               <select
                 className={selectClass}
@@ -228,18 +333,213 @@ export function RoundConfigPage() {
                 onChange={(event) => setRule("date", event.target.value)}
               />
             </Field>
-            <Field label="Prazo de Entrega">
+            <Field
+              label="Prazo de Entrega"
+              hint={
+                isOverdue(draft.deadline, round.status)
+                  ? "Prazo vencido — remarque a data ou cobre as equipes."
+                  : undefined
+              }
+            >
               <Input
                 type="date"
                 value={draft.deadline}
                 onChange={(event) => setRule("deadline", event.target.value)}
               />
             </Field>
+            <Field
+              label="PV do Chefe"
+              hint={`PV ${round.hp} de ${round.max_hp}`}
+            >
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  value={hpValue}
+                  onChange={(event) =>
+                    setHpDraft({ roundId: round.id, value: event.target.value })
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void applyHp();
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void applyHp()}
+                >
+                  Aplicar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  title="Restaurar o PV máximo do chefe"
+                  onClick={() => void restoreHp()}
+                >
+                  <Heart /> Restaurar
+                </Button>
+              </div>
+            </Field>
             <Field label="Status">
               <div className="pt-1">
                 <StatusBadge status={round.status} />
               </div>
             </Field>
+          </div>
+
+          {/* Faixa de gerência da disputa: ciclo + utilitários (M-50). */}
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-background p-3">
+            {round.status === "CONFIG" && (
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  void runAction(
+                    () => arenaService.start(round.id),
+                    "Batalha iniciada.",
+                  )
+                }
+              >
+                <Play /> Iniciar
+              </Button>
+            )}
+            {round.status === "RUNNING" && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() =>
+                    void runAction(
+                      () => arenaService.pause(round.id),
+                      "Batalha pausada.",
+                    )
+                  }
+                >
+                  <Pause /> Pausar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={busy}
+                  onClick={() =>
+                    void runAction(
+                      () => arenaService.end(round.id),
+                      "Batalha encerrada.",
+                    )
+                  }
+                >
+                  <Flag /> Encerrar
+                </Button>
+              </>
+            )}
+            {round.status === "PAUSED" && (
+              <>
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void runAction(
+                      () => arenaService.resume(round.id),
+                      "Batalha retomada.",
+                    )
+                  }
+                >
+                  <Play /> Retomar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={busy}
+                  onClick={() =>
+                    void runAction(
+                      () => arenaService.end(round.id),
+                      "Batalha encerrada.",
+                    )
+                  }
+                >
+                  <Flag /> Encerrar
+                </Button>
+              </>
+            )}
+            {round.status === "ENDED" && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void runAction(
+                    () => arenaService.reopen(round.id),
+                    "Disputa reaberta.",
+                  )
+                }
+              >
+                <Play /> Reabrir
+              </Button>
+            )}
+
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                title="Desfazer a última ação registrada"
+                onClick={() =>
+                  void runAction(
+                    () => arenaService.undo(round.id),
+                    "Última ação desfeita.",
+                  )
+                }
+              >
+                <RefreshCw /> Desfazer
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void duplicate()}
+              >
+                Duplicar
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive"
+                    disabled={busy}
+                  >
+                    <Trash2 /> Excluir
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Excluir a rodada “{round.name}”?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      A disputa e todo o registro dela (placar, log e
+                      marcações) serão apagados. Essa ação não pode ser
+                      desfeita.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={busy}>
+                      Cancelar
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={busy}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => void remove()}
+                    >
+                      Excluir
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
 
           <Tabs defaultValue="pontos" className="mt-5">

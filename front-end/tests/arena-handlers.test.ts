@@ -126,3 +126,122 @@ test("start registra as equipes e o placar pré-lançado sobrevive", async () =>
   const team = state.teams.find((item) => item.group_id === 1);
   assert.equal(team?.points, 420); // ajuste prévio intacto (??= do mock)
 });
+
+// ——— M-50: gerência de rodadas (duplicar/excluir/PV/reabrir/desfazer) ———
+
+async function createRound(name: string, maxHp = 10000): Promise<number> {
+  const resp = await post("/arena/rounds/", { name, boss: 1, max_hp: maxHp });
+  assert.equal(resp.status, 201);
+  const body = (await resp.json()) as { id: number };
+  return body.id;
+}
+
+const stateOf = async (id: number) =>
+  (await (await get(`/arena/rounds/${id}/state/`)).json()) as {
+    status: string;
+    hp: number;
+    max_hp: number;
+    outcome: string;
+    events: { kind: string; message: string }[];
+  };
+
+test("duplicate cria cópia em CONFIG sem histórico e o DELETE remove", async () => {
+  const originalId = await createRound("Rodada Clone");
+  await post(`/arena/rounds/${originalId}/start/`, {});
+  await post(`/arena/rounds/${originalId}/damage/`, { group_id: 1, damage: 300 });
+
+  const dup = await post(`/arena/rounds/${originalId}/duplicate/`, {});
+  assert.equal(dup.status, 201);
+  const copy = (await dup.json()) as Record<string, unknown>;
+  assert.equal(copy.status, "CONFIG");
+  assert.equal(copy.hp, copy.max_hp);
+  assert.equal(copy.name, "Rodada Clone (cópia)");
+  assert.deepEqual(copy.contributions, []);
+  assert.notEqual(copy.id, originalId);
+
+  const del = await fetch(`${API_BASE_URL}/arena/rounds/${copy.id}/`, {
+    method: "DELETE",
+    headers: HEADERS,
+  });
+  assert.equal(del.status, 204);
+  const rows = (await (await get("/arena/rounds/")).json()) as Record<string, unknown>[];
+  assert.ok(!rows.some((item) => item.id === copy.id));
+  // A original fica intacta (RUNNING, com o dano).
+  const original = rows.find((item) => item.id === originalId);
+  assert.equal(original?.status, "RUNNING");
+  assert.equal(
+    Number(original?.hp),
+    Number(original?.max_hp) - 300,
+  );
+});
+
+test("set-hp edita o PV (clamp no máximo) e o undo desfazer em cadeia", async () => {
+  const id = await createRound("Rodada PV");
+
+  let resp = await post(`/arena/rounds/${id}/set-hp/`, { hp: 4321 });
+  assert.equal(resp.status, 200);
+  let state = await stateOf(id);
+  assert.equal(state.hp, 4321);
+
+  // Teto do PV máximo.
+  resp = await post(`/arena/rounds/${id}/set-hp/`, { hp: 999999 });
+  assert.equal(resp.status, 200);
+  state = await stateOf(id);
+  assert.equal(state.hp, state.max_hp);
+
+  // Desfazer o ajuste: volta ao PV anterior e anota no registro.
+  resp = await post(`/arena/rounds/${id}/undo/`, {});
+  assert.equal(resp.status, 200);
+  state = await stateOf(id);
+  assert.equal(state.hp, 4321);
+  const last = state.events[state.events.length - 1];
+  assert.equal(last?.kind, "EDIT");
+  assert.equal(last?.message, "Última ação desfeita.");
+
+  // Desfazer de novo: regrava o estado anterior e some com o lote.
+  resp = await post(`/arena/rounds/${id}/undo/`, {});
+  assert.equal(resp.status, 200);
+  state = await stateOf(id);
+  assert.equal(state.hp, state.max_hp);
+
+  // Sem checkpoint sobrando, recusa.
+  resp = await post(`/arena/rounds/${id}/undo/`, {});
+  assert.equal(resp.status, 400);
+  assert.ok((await resp.text()).includes("Nada para desfazer."));
+});
+
+test("end bloqueia o override, reopen reabre e o ciclo recusa reabrir 2x", async () => {
+  const id = await createRound("Rodada Fim");
+  assert.equal((await post(`/arena/rounds/${id}/start/`, {})).status, 200);
+  assert.equal(
+    (await post(`/arena/rounds/${id}/damage/`, { group_id: 1, damage: 300 })).status,
+    200,
+  );
+  assert.equal((await post(`/arena/rounds/${id}/end/`, {})).status, 200);
+  let state = await stateOf(id);
+  assert.equal(state.status, "ENDED");
+
+  // Placar travado em ENDED — a saída é reabrir (M-50).
+  const blocked = await post(`/arena/rounds/${id}/override/`, {
+    group_id: 1,
+    amount: 50,
+  });
+  assert.equal(blocked.status, 400);
+  assert.ok((await blocked.text()).includes("reabra"));
+
+  assert.equal((await post(`/arena/rounds/${id}/reopen/`, {})).status, 200);
+  state = await stateOf(id);
+  assert.equal(state.status, "RUNNING");
+  assert.equal(state.outcome, "");
+
+  // Reabrir de novo: só funciona em ENDED.
+  const twice = await post(`/arena/rounds/${id}/reopen/`, {});
+  assert.equal(twice.status, 400);
+  assert.ok((await twice.text()).includes("encerrada"));
+
+  // Com a disputa em pé, o desfazer volta o dano (o fim foi apagado junto).
+  assert.equal((await post(`/arena/rounds/${id}/undo/`, {})).status, 200);
+  state = await stateOf(id);
+  assert.equal(state.hp, state.max_hp);
+  assert.ok(!state.events.some((ev) => ev.kind === "END"));
+});

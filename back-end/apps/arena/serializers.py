@@ -209,6 +209,12 @@ class OverrideSerializer(serializers.Serializer):
     amount = serializers.IntegerField()
 
 
+class SetHpSerializer(serializers.Serializer):
+    """Ajuste do PV do chefe (M-50) — o teto é o ``max_hp`` da rodada."""
+
+    hp = serializers.IntegerField(min_value=0)
+
+
 class UseAbilitySerializer(serializers.Serializer):
     """Uso de habilidade de equipe — o d20 é rolado no servidor (ADR-019)."""
 

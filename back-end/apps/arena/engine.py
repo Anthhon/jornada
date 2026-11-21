@@ -54,6 +54,7 @@ KIND_RETALIATION = "RETALIATION"
 KIND_REWARD = "REWARD"
 KIND_END = "END"
 KIND_ABILITY = "ABILITY"
+KIND_EDIT = "EDIT"
 
 # Desfecho da raid (espelhado em models.ArenaRound.outcome, ADR-018).
 OUTCOME_VICTORY = "VICTORY"
@@ -299,6 +300,44 @@ def end(state: RaidState) -> List[Event]:
             "(chefe em fuga — dá para continuar na próxima rodada)"
         )
     return [_log(state, KIND_END, ACTOR_SYSTEM, None, 0, message)]
+
+
+def reopen(state: RaidState) -> List[Event]:
+    """ENDED -> RUNNING: desfaz o encerramento (M-50).
+
+    Só o estado muda aqui — o estorno das recompensas creditadas é
+    trabalho de ``services.reopen_round``. O PV continua o que estava
+    (para reviver um chefe derrotado, o professor ajusta com ``set_hp``).
+    """
+    if state.status != STATUS_ENDED:
+        raise ArenaError("Só é possível reabrir uma disputa encerrada.")
+    state.status = STATUS_RUNNING
+    state.outcome = None
+    state.killing_team = None
+    return [
+        _log(state, KIND_RESUME, ACTOR_SYSTEM, None, 0,
+             "Disputa reaberta pelo professor.")
+    ]
+
+
+def set_hp(state: RaidState, value: int) -> List[Event]:
+    """Ajuste livre do PV do chefe pelo professor (restaurar/editar, M-50).
+
+    O valor é aparado em ``[0, max_hp]``; sem mudança não há evento
+    (logo, nada a desfazer). PV voltando a ser positivo libera o golpe
+    final de novo (``killing_team`` zera).
+    """
+    new_hp = max(0, min(state.max_hp, int(value)))
+    before = state.hp
+    if new_hp == before:
+        return []
+    state.hp = new_hp
+    if new_hp > 0:
+        state.killing_team = None
+    return [
+        _log(state, KIND_EDIT, ACTOR_SYSTEM, None, new_hp - before,
+             f"PV do chefe ajustado: {before} → {new_hp}.")
+    ]
 
 
 def _check_victory(state: RaidState, events: List[Event]) -> None:

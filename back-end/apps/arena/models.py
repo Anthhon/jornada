@@ -85,6 +85,12 @@ class ArenaRound(models.Model):
             ],
             verbose_name="Desfecho",
             )
+    killing_team = models.PositiveIntegerField(
+            null=True,
+            blank=True,
+            verbose_name="Equipe do golpe final",
+            help_text="Quem derrubou o chefe — rateia o saque (ADR-018/M-50).",
+            )
     status = models.CharField(
             max_length=7,
             choices=Status.choices,
@@ -242,6 +248,7 @@ class ArenaEvent(models.Model):
         REWARD = "REWARD", "Recompensa"
         END = "END", "Fim"
         ABILITY = "ABILITY", "Habilidade"
+        EDIT = "EDIT", "Edição do professor"
 
     round = models.ForeignKey(
             ArenaRound,
@@ -293,6 +300,12 @@ class ArenaEvent(models.Model):
     message = models.CharField(
             max_length=255,
             help_text="Texto exibido no registro da batalha.",
+            )
+    snapshot = models.JSONField(
+            null=True,
+            blank=True,
+            verbose_name="Checkpoint de estado",
+            help_text="Estado antes da ação reversível — base do desfazer (M-50).",
             )
 
     class Meta:
