@@ -309,21 +309,33 @@ export function ConfigPanel({
       )}
 
       {/* Habilidades de equipe: 3 + 1 do professor, d20 no uso (ADR-019/021) */}
-      {running && anyAbilities && (
+      {running && (
         <div className="space-y-2 border-t border-border pt-3">
           <p className="text-[0.65rem] uppercase tracking-widest text-muted-foreground">Habilidades da equipe</p>
-          {!selectedTeam && (
+          {!anyAbilities ? (
+            <p className="text-xs text-muted-foreground">
+              Nenhuma equipe tem habilidades atribuídas — sem elas não há
+              botões (o ataque padrão acima continua valendo, sem dado).
+              Para atribuir o 3+1 por tema, rode{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[0.65rem]">
+                manage.py seed_habilidades_equipe
+              </code>{" "}
+              ou use o admin/API do Django (model{" "}
+              <code className="rounded bg-muted px-1 py-0.5 text-[0.65rem]">
+                GroupAbility
+              </code>
+              ).
+            </p>
+          ) : !selectedTeam ? (
             <p className="text-xs text-muted-foreground">
               Selecione a equipe no painel acima para usar as habilidades dela.
             </p>
-          )}
-          {selectedTeam && selectedTeam.abilities.length === 0 && (
+          ) : selectedTeam.abilities.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               {selectedTeam.group_name} não tem habilidades atribuídas
               (professor escolhe 3 + 1 na equipe).
             </p>
-          )}
-          {selectedTeam && selectedTeam.abilities.length > 0 && (
+          ) : (
             <>
               <p className="text-xs text-muted-foreground">
                 {selectedTeam.group_name}

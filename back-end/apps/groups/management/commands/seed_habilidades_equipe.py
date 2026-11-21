@@ -5,13 +5,21 @@ equipe (ADR-021); as habilidades são usadas **só na Arena**, com d20 no uso
 (ADR-019) e cargas escaladas pelo bando (ADR-020). Rodar de novo não
 duplica nem apaga templates customizados do professor (upsert por tema+nome).
 
+Também **atribui** o 3+1 do tema às equipes ativas que ainda não têm
+nenhuma habilidade (as que já têm são respeitadas — escolha do professor).
+As cargas nascem com a escala do bando pela referência padrão (4 equipes) e
+o `start` da raid reajusta com o `balance_ref_teams` da rodada.
+
 Uso:
-    manage.py seed_habilidades_equipe
+    manage.py seed_habilidades_equipe                  # templates + atribui 3+1
+    manage.py seed_habilidades_equipe --theme=Vulcão   # atribui outro tema
+    manage.py seed_habilidades_equipe --no-assign      # só os templates
 """
 
 from django.core.management.base import BaseCommand
 
-from apps.groups.models import TeamAbilityTemplate
+from apps.arena.engine import scaled_charges
+from apps.groups.models import Group, GroupAbility, TeamAbilityTemplate
 
 TEMPLATES = [
     # --- Guardiões da Floresta -------------------------------------------
@@ -92,7 +100,22 @@ TEMPLATES = [
 
 
 class Command(BaseCommand):
-    help = "Seed idempotente do catálogo de habilidades de equipe (2 temas, 3+1 cada)."
+    help = (
+        "Seed idempotente do catálogo de habilidades de equipe (2 temas, 3+1 cada) "
+        "e atribuição do 3+1 às equipes ativas sem habilidades."
+    )
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--theme",
+            default=None,
+            help="Tema a atribuir às equipes (padrão: primeiro tema do catálogo).",
+        )
+        parser.add_argument(
+            "--no-assign",
+            action="store_true",
+            help="Só cria os templates; não atribui habilidades às equipes.",
+        )
 
     def handle(self, *args, **options):
         created = 0
@@ -109,8 +132,12 @@ class Command(BaseCommand):
                 },
             )
             created += int(was_created)
+        # order_by() zera o Meta.ordering: sem isso o DISTINCT herda
+        # (theme, kind, name) e os temas saem repetidos no select.
         themes = sorted(
-            TeamAbilityTemplate.objects.values_list("theme", flat=True).distinct()
+            TeamAbilityTemplate.objects.order_by()
+            .values_list("theme", flat=True)
+            .distinct()
         )
         self.stdout.write(
             self.style.SUCCESS(
@@ -119,3 +146,41 @@ class Command(BaseCommand):
                 f"– {', '.join(themes)})."
             )
         )
+        if not options["no_assign"]:
+            atribuidas = self._atribuir_equipes(options["theme"], themes)
+            if atribuidas:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"seed_habilidades_equipe: 3+1 atribuído a {atribuidas} "
+                        f"equipe(s) sem habilidades."
+                    )
+                )
+
+    def _atribuir_equipes(self, tema_escolhido, themes):
+        """Atribui o 3+1 do tema às equipes ativas que não têm habilidade."""
+        if not themes:
+            return 0
+        tema = tema_escolhido or themes[0]
+        templates = list(
+            TeamAbilityTemplate.objects.filter(theme=tema).order_by("kind", "name")
+        )
+        if len(templates) != 4:
+            self.stderr.write(
+                f"Tema {tema!r} com {len(templates)} template(s) — esperado 3+1. "
+                f"Nada atribuído (temas: {', '.join(themes)})."
+            )
+            return 0
+
+        ativos = Group.objects.filter(is_active=True).prefetch_related("abilities")
+        sem_habilidades = [g for g in ativos if not g.abilities.exists()]
+        # Referência padrão de escala (ArenaRound.balance_ref_teams = 4); o
+        # start da raid reajusta com o valor real da rodada.
+        n = ativos.count()
+        for grupo in sem_habilidades:
+            for template in templates:
+                GroupAbility.objects.create(
+                    group=grupo,
+                    template=template,
+                    charges_left=scaled_charges(template.max_charges, 4, n),
+                )
+        return len(sem_habilidades)

@@ -1,8 +1,9 @@
+from django.core.management import call_command
 from django.test import TestCase
 
 from apps.test_helpers import anon_client, staff_client, user_client
 
-from .models import Group
+from .models import Group, GroupAbility, TeamAbilityTemplate
 
 
 class GroupApiTests(TestCase):
@@ -259,3 +260,63 @@ class TeamAbilityAssignmentTests(TestCase):
         self.assertTrue(all(
             item["theme"] == "Vulcão" for item in resp.data
         ))
+
+
+class SeedHabilidadesEquipeTests(TestCase):
+    """seed_habilidades_equipe: catálogo por tema + atribuição 3+1 (ADR-021)."""
+
+    def test_atribui_3plus1_escalado_e_pula_inativas(self):
+        Group.objects.create(name="Alfa")
+        Group.objects.create(name="Beta")
+        Group.objects.create(name="Gamma", is_active=False)
+        call_command("seed_habilidades_equipe")
+        self.assertEqual(TeamAbilityTemplate.objects.count(), 8)
+        for name in ("Alfa", "Beta"):
+            group = Group.objects.get(name=name)
+            self.assertEqual(group.abilities.count(), 4)
+            kinds = sorted(
+                group.abilities.values_list("template__kind", flat=True)
+            )
+            self.assertEqual(kinds, ["BASIC", "BASIC", "BASIC", "ULTIMATE"])
+            # escala do bando pela referência padrão (4): ref=4, n=2 ativas
+            basic = set(
+                group.abilities.filter(
+                    template__kind="BASIC"
+                ).values_list("charges_left", flat=True)
+            )
+            ultimate = set(
+                group.abilities.filter(
+                    template__kind="ULTIMATE"
+                ).values_list("charges_left", flat=True)
+            )
+            self.assertEqual(basic, {4})
+            self.assertEqual(ultimate, {2})
+        self.assertEqual(
+            Group.objects.get(name="Gamma").abilities.count(), 0
+        )
+
+    def test_repetir_nao_duplica_e_respeita_escolha_do_professor(self):
+        Group.objects.create(name="Alfa")
+        call_command("seed_habilidades_equipe")
+        self.assertEqual(GroupAbility.objects.count(), 4)
+        # escolha do professor: troca para Vulcão antes de rodar de novo
+        alfa = Group.objects.get(name="Alfa")
+        vulcao = list(
+            TeamAbilityTemplate.objects.filter(theme="Vulcão")
+            .order_by("kind", "name")
+        )
+        alfa.abilities.all().delete()
+        for template in vulcao:
+            alfa.abilities.create(template=template)
+        call_command("seed_habilidades_equipe")
+        self.assertEqual(GroupAbility.objects.count(), 4)
+        self.assertEqual(
+            set(alfa.abilities.values_list("template__theme", flat=True)),
+            {"Vulcão"},
+        )
+
+    def test_flag_no_assign_so_cria_templates(self):
+        Group.objects.create(name="Alfa")
+        call_command("seed_habilidades_equipe", "--no-assign")
+        self.assertEqual(TeamAbilityTemplate.objects.count(), 8)
+        self.assertEqual(GroupAbility.objects.count(), 0)
