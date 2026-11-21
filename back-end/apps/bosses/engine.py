@@ -82,11 +82,13 @@ class Ability:
     scope: str = SCOPE_TEAM
     min_count: int = 1
     description: str = ""
+    id: Optional[int] = None  # pk de BossAbility (eventos estruturados, ADR-022)
 
     @classmethod
     def from_model(cls, obj) -> "Ability":
         """Converte uma linha ``BossAbility`` (patito — sem importar Django)."""
         return cls(
+            id=getattr(obj, "id", None),
             name=obj.name,
             trigger=obj.trigger,
             effect=obj.effect,

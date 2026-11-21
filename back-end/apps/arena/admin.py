@@ -16,8 +16,14 @@ class ArenaEventInline(admin.TabularInline):
     model = ArenaEvent
     extra = 0
     can_delete = False  # log append-only
-    readonly_fields = ("actor", "group", "kind", "value", "message", "created_at")
-    fields = ("created_at", "actor", "kind", "group", "value", "message")
+    readonly_fields = (
+        "actor", "group", "kind", "value", "message", "roll",
+        "ability_id", "ability_name", "created_at",
+    )
+    fields = (
+        "created_at", "actor", "kind", "group", "value", "ability_name",
+        "roll", "message",
+    )
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -25,19 +31,31 @@ class ArenaEventInline(admin.TabularInline):
 
 @admin.register(ArenaRound)
 class ArenaRoundAdmin(admin.ModelAdmin):
-    list_display = ("name", "boss", "status", "hp", "max_hp", "level", "date")
-    list_filter = ("status",)
+    list_display = (
+        "name", "boss", "status", "outcome", "hp", "max_hp", "level",
+        "treasure", "date",
+    )
+    list_filter = ("status", "outcome")
     search_fields = ("name", "boss__name")
     inlines = (TeamContributionInline, ArenaEventInline)
-    readonly_fields = ("started_at", "finished_at", "rewards_credited", "created_at")
+    readonly_fields = (
+        "started_at", "finished_at", "rewards_credited", "outcome",
+        "created_at",
+    )
 
 
 @admin.register(ArenaEvent)
 class ArenaEventAdmin(admin.ModelAdmin):
     """Log append-only: sem adição/edição/remoção (auditoria)."""
-    list_display = ("created_at", "kind", "actor", "group", "value", "round")
+    list_display = (
+        "created_at", "kind", "actor", "group", "value", "ability_name",
+        "roll", "round",
+    )
     list_filter = ("kind", "actor")
-    readonly_fields = ("round", "actor", "group", "kind", "value", "message", "created_at")
+    readonly_fields = (
+        "round", "actor", "group", "kind", "value", "message", "roll",
+        "ability_id", "ability_name", "created_at",
+    )
 
     def has_add_permission(self, request):
         return False

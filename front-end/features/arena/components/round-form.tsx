@@ -27,6 +27,9 @@ export function RoundForm({ onDone }: { onDone: (id: number) => void }) {
   const [multiplier, setMultiplier] = useState("1.5");
   const [retaliation, setRetaliation] = useState("0.25");
   const [reward, setReward] = useState("1");
+  const [treasure, setTreasure] = useState("500");
+  const [balance, setBalance] = useState("4");
+  const [initialHp, setInitialHp] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -56,6 +59,9 @@ export function RoundForm({ onDone }: { onDone: (id: number) => void }) {
         multiplier: Number(multiplier) || undefined,
         retaliation_ratio: Number(retaliation),
         reward_factor: Number(reward),
+        treasure: Number(treasure) || 0,
+        balance_ref_teams: Number(balance) || 0,
+        ...(Number(initialHp) > 0 ? { initial_hp: Number(initialHp) } : {}),
       });
       toast.success("Rodada criada.");
       onDone(created.id);
@@ -111,7 +117,29 @@ export function RoundForm({ onDone }: { onDone: (id: number) => void }) {
         <Field label="Recompensa (×)">
           <Input type="number" step="0.1" min={0} value={reward} onChange={(e) => setReward(e.target.value)} />
         </Field>
+        <Field label="Saque do chefe (pts)">
+          <Input type="number" min={0} value={treasure} onChange={(e) => setTreasure(e.target.value)} />
+        </Field>
+        <Field label="Escala (ref. equipes)">
+          <Input type="number" min={0} value={balance} onChange={(e) => setBalance(e.target.value)} />
+        </Field>
       </div>
+
+      <p className="-mt-2 text-[0.7rem] leading-relaxed text-muted-foreground">
+        O <strong>saque</strong> só cai se o chefe for derrotado (na derrota ele
+        escapa com ele). A <strong>escala</strong> deixa menos equipes mais
+        fortes — <code>4</code> = referência, <code>0</code> = desligado.
+      </p>
+
+      <Field label="PV inicial (opcional)">
+        <Input
+          type="number"
+          min={1}
+          value={initialHp}
+          onChange={(e) => setInitialHp(e.target.value)}
+          placeholder="Chefe em fuga: continue do dano acumulado"
+        />
+      </Field>
 
       <Field label="Retaliação (%)">
         <Input type="number" step="0.01" min={0} max={1} value={retaliation} onChange={(e) => setRetaliation(e.target.value)} />

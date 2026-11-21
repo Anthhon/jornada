@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -83,6 +83,48 @@ function Arena() {
     }
   };
 
+  /**
+   * Uso de habilidade: `true`/`false` para o painel coordenar a animação do
+   * d20 (o resultado mesmo só chega no próximo polling, via evento `roll`).
+   */
+  const runAbility = async (fn: () => Promise<unknown>): Promise<boolean> => {
+    setBusy(true);
+    try {
+      await fn();
+      retry();
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "A ação falhou.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Banner: avisa quando entra uma habilidade NOVA do chefe (eventos
+  // estruturados ADR-022 — nada de parsing de mensagem).
+  const seenEvents = useRef<{ round: number; max: number } | null>(null);
+  useEffect(() => {
+    if (!state) return;
+    const max = state.events.reduce((acc, event) => Math.max(acc, event.id), 0);
+    const seen = seenEvents.current;
+    if (!seen || seen.round !== state.id) {
+      seenEvents.current = { round: state.id, max };
+      return;
+    }
+    if (max <= seen.max) return;
+    const fresh = state.events.filter((event) => event.id > seen.max);
+    seenEvents.current = { round: state.id, max };
+    for (const event of fresh) {
+      if (event.kind === "ABILITY" && event.actor === "BOS") {
+        toast(event.ability_name ? `⚡ ${event.ability_name}` : "⚡ Habilidade do chefe", {
+          description: event.message,
+          duration: 5000,
+        });
+      }
+    }
+  }, [state]);
+
   const handleStart = () => {
     if (effectiveId) void run(() => arenaService.start(effectiveId), "Batalha iniciada.");
   };
@@ -100,6 +142,15 @@ function Arena() {
   };
   const handleApplyPerformance = (payload: { group_id: number; criteria: Record<string, number> }) => {
     if (effectiveId) void run(() => arenaService.applyPerformance(effectiveId, payload), "Notas registradas.");
+  };
+  const handleUseAbility = (payload: { group_id: number; ability_id: number }) =>
+    effectiveId
+      ? runAbility(() => arenaService.useAbility(effectiveId, payload))
+      : Promise.resolve(false);
+  const handleRenewAbilities = (group_id: number) => {
+    if (effectiveId) {
+      void run(() => arenaService.renewAbilities(effectiveId, { group_id }), "Habilidades renovadas.");
+    }
   };
 
   const handleCreated = (id: number) => {
@@ -177,6 +228,8 @@ function Arena() {
                 onEnd={handleEnd}
                 onAttack={handleAttack}
                 onApplyPerformance={handleApplyPerformance}
+                onUseAbility={handleUseAbility}
+                onRenewAbilities={handleRenewAbilities}
               />
             </div>
           )}

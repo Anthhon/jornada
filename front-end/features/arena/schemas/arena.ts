@@ -12,6 +12,20 @@ export const ARENA_STATUS_META: Record<ArenaStatus, { label: string; className: 
   ENDED: { label: "Encerrada", className: "bg-destructive/10 text-destructive border-destructive/40" },
 };
 
+export const arenaTeamAbilitySchema = z.object({
+  /** `GroupAbility` atribuída à equipe (3+1, ADR-021). */
+  id: z.number(),
+  template_id: z.number(),
+  name: z.string(),
+  /** BASIC | ULTIMATE */
+  kind: z.string(),
+  /** STRIKE | HEAL | SHIELD | BUFF */
+  effect: z.string(),
+  value: z.number(),
+  max_charges: z.number(),
+  charges_left: z.number(),
+});
+
 export const arenaTeamSchema = z.object({
   group_id: z.number(),
   group_name: z.string(),
@@ -28,6 +42,12 @@ export const arenaTeamSchema = z.object({
   wrong_answers: z.number(),
   /** Corte de habilidade sobre o dano de ataque (0.5 = metade). */
   damage_factor: z.number(),
+  /** Escudo da equipe: absorve retaliações/penalidades (ADR-021). */
+  shield: z.number(),
+  /** Bônus acumulado no próximo ataque (0.3 = +30%, ADR-021). */
+  damage_buff: z.number(),
+  /** Habilidades escolhidas pelo professor (3+1, ADR-021). */
+  abilities: z.array(arenaTeamAbilitySchema),
 });
 
 export const arenaEventSchema = z.object({
@@ -38,6 +58,10 @@ export const arenaEventSchema = z.object({
   group_name: z.string().nullable(),
   value: z.number(),
   message: z.string(),
+  /** Rolagem do d20 no uso de habilidade (ADR-019). */
+  roll: z.number().nullable(),
+  ability_id: z.number().nullable(),
+  ability_name: z.string().nullable(),
   created_at: z.string().nullable(),
 });
 
@@ -75,6 +99,14 @@ export const arenaStateSchema = z.object({
   multiplier: z.number(),
   retaliation_ratio: z.number(),
   reward_factor: z.number(),
+  /** Escala do bando ligada na rodada (0 = desligada, ADR-020). */
+  balance_ref_teams: z.number(),
+  /** Saque do chefe em pontos, rateado só na vitória (ADR-018). */
+  treasure: z.number(),
+  /** Desfecho: "" (em aberto) | VICTORY | RETREAT (ADR-018). */
+  outcome: z.string(),
+  /** Fator de escala vigente (1.0 = desligada, ADR-020). */
+  balance: z.number(),
   boss: arenaBossSchema,
   teams: z.array(arenaTeamSchema),
   events: z.array(arenaEventSchema),
@@ -100,6 +132,7 @@ export const arenaBossOptionSchema = z.object({
 });
 
 export type ArenaTeam = z.infer<typeof arenaTeamSchema>;
+export type ArenaTeamAbility = z.infer<typeof arenaTeamAbilitySchema>;
 export type ArenaEvent = z.infer<typeof arenaEventSchema>;
 export type ArenaAbility = z.infer<typeof arenaAbilitySchema>;
 export type ArenaBoss = z.infer<typeof arenaBossSchema>;

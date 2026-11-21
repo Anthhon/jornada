@@ -5,12 +5,14 @@ import { isMockTeacher } from "../mock-teacher";
 /**
  * Mock da Arena (raid) — espelha o motor de `back-end/apps/arena/engine.py`
  * (transições, dano, retaliação, recompensa única, **habilidades do chefe**
- * com notas por critério — ADR-017) para a UI funcionar sem o backend.
+ * com notas por critério — ADR-017; **saque/desfecho** — ADR-018; **d20 nas
+ * habilidades de equipe** — ADR-019; **escala do bando** — ADR-020;
+ * **habilidades 3+1 da equipe** — ADR-021) para a UI funcionar sem o backend.
  * Persiste em `localStorage` (fallback em memória), como a agenda.
  */
 
-/** v2: notas por critério, habilidades e corte de dano (ADR-017). */
-const storageKey = "jornada-mock-arena-v2";
+/** v3: saque/desfecho, escala do bando, habilidades de equipe com d20 (ADR-018..021). */
+const storageKey = "jornada-mock-arena-v3";
 
 type Status = "CONFIG" | "RUNNING" | "PAUSED" | "ENDED";
 
@@ -39,6 +41,18 @@ interface MockBoss {
   abilities: MockAbility[];
 }
 
+/** Habilidade de equipe atribuída (espela `GroupAbility` — ADR-021). */
+interface MockTeamAbility {
+  id: number;
+  template_id: number;
+  name: string;
+  kind: string; // BASIC | ULTIMATE
+  effect: string; // STRIKE | HEAL | SHIELD | BUFF
+  value: number;
+  max_charges: number;
+  charges_left: number;
+}
+
 interface TeamData {
   group_id: number;
   group_name: string;
@@ -49,6 +63,9 @@ interface TeamData {
   criteria: Record<string, number> | null;
   wrong_answers: number;
   damage_factor: number;
+  shield: number;
+  damage_buff: number;
+  abilities: MockTeamAbility[];
 }
 
 interface MockEvent {
@@ -59,6 +76,9 @@ interface MockEvent {
   group_name: string | null;
   value: number;
   message: string;
+  roll: number | null;
+  ability_id: number | null;
+  ability_name: string | null;
   created_at: string | null;
 }
 
@@ -73,6 +93,10 @@ interface MockRound {
   multiplier: number;
   retaliation_ratio: number;
   reward_factor: number;
+  balance_ref_teams: number;
+  treasure: number;
+  outcome: "" | "VICTORY" | "RETREAT";
+  killing_team: number | null;
   boss: MockBoss;
   teams: Record<string, TeamData>;
   events: MockEvent[];
@@ -157,6 +181,17 @@ const SEED_TEAMS = [
   { group_id: 3, group_name: "Equipe Gama" },
 ];
 
+/** Catálogo 3+1 do mock (espelha `seed_habilidades_equipe`, tema Floresta). */
+const TEAM_TEMPLATES: Omit<MockTeamAbility, "id" | "charges_left">[] = [
+  { template_id: 101, name: "Golpe de Raiz", kind: "BASIC", effect: "STRIKE", value: 150, max_charges: 2 },
+  { template_id: 102, name: "Seiva Restauradora", kind: "BASIC", effect: "HEAL", value: 40, max_charges: 2 },
+  { template_id: 103, name: "Fúria Verde", kind: "BASIC", effect: "BUFF", value: 30, max_charges: 2 },
+  { template_id: 104, name: "Tempestade de Espinhos", kind: "ULTIMATE", effect: "STRIKE", value: 500, max_charges: 1 },
+];
+
+/** Fatia do saque para quem desferiu o golpe final (ADR-018). */
+const FINAL_BLOW_SHARE = 0.1;
+
 function seed(): MockArena {
   const boss = BOSSES[0];
   return {
@@ -175,6 +210,10 @@ function seed(): MockArena {
         multiplier: 1.5,
         retaliation_ratio: 0.25,
         reward_factor: 1,
+        balance_ref_teams: 4,
+        treasure: 500,
+        outcome: "",
+        killing_team: null,
         boss: { ...boss },
         teams: {},
         events: [],
@@ -210,6 +249,36 @@ function teamPoints(round: MockRound, team: TeamData): number {
   return Math.max(0, Math.round(total * round.reward_factor) - team.retaliation_loss + team.manual_adjustment);
 }
 
+/** Escala do bando (ADR-020): `clamp(ref / n, 0.5, 2)`; ref 0 = desligada. */
+function balanceFactor(round: MockRound): number {
+  const n = Object.keys(round.teams).length;
+  if (round.balance_ref_teams <= 0 || n <= 0) return 1;
+  return Math.max(0.5, Math.min(2, round.balance_ref_teams / n));
+}
+
+/** Cargas de habilidade com a escala do bando (ADR-020). */
+function scaledCharges(base: number, ref: number, n: number): number {
+  if (ref <= 0 || n <= 0) return base;
+  return Math.max(1, Math.floor((base * ref) / n + 0.5));
+}
+
+/** d20 (ADR-019): 19–20 crítico ×2, 1–2 falha ×0.5. */
+function d20Multiplier(roll: number): number {
+  if (roll >= 19) return 2;
+  if (roll <= 2) return 0.5;
+  return 1;
+}
+
+/** Reduz o PV do chefe e anota o golpe final (ADR-018). */
+function dealBossDamage(round: MockRound, damage: number, groupId?: number): void {
+  if (damage <= 0) return;
+  const before = round.hp;
+  round.hp = Math.max(0, round.hp - damage);
+  if (before > 0 && round.hp <= 0 && groupId != null && round.killing_team == null) {
+    round.killing_team = groupId;
+  }
+}
+
 function toState(round: MockRound) {
   const teams = Object.values(round.teams)
     .map((team) => ({
@@ -230,6 +299,10 @@ function toState(round: MockRound) {
     multiplier: round.multiplier,
     retaliation_ratio: round.retaliation_ratio,
     reward_factor: round.reward_factor,
+    balance_ref_teams: round.balance_ref_teams,
+    treasure: round.treasure,
+    outcome: round.outcome,
+    balance: balanceFactor(round),
     boss: round.boss,
     events: round.events,
     rewards_credited: round.rewards_credited,
@@ -257,6 +330,7 @@ function logEvent(
   group: number | null,
   value: number,
   message: string,
+  extra: { roll?: number; ability_id?: number; ability_name?: string } = {},
 ): void {
   round.events.push({
     id: arena.nextEventId++,
@@ -266,6 +340,9 @@ function logEvent(
     group_name: group != null ? (round.teams[String(group)]?.group_name ?? null) : null,
     value,
     message,
+    roll: extra.roll ?? null,
+    ability_id: extra.ability_id ?? null,
+    ability_name: extra.ability_name ?? null,
     created_at: new Date().toISOString(),
   });
 }
@@ -278,13 +355,45 @@ function creditRewards(arena: MockArena, round: MockRound): void {
       logEvent(arena, round, "REWARD", "SYSTEM", team.group_id, pts, `Recompensa: ${pts} pontos para a equipe.`);
     }
   }
+  // Saque do chefe: só na vitória (ADR-018) — golpe final + rateio do dano.
+  if (round.outcome === "VICTORY" && round.treasure > 0) {
+    const teams = Object.values(round.teams);
+    const total = teams.reduce((sum, team) => sum + team.base_damage + team.battle_damage, 0);
+    if (total > 0) {
+      const blow = Math.trunc(round.treasure * FINAL_BLOW_SHARE);
+      const rest = round.treasure - blow;
+      const shares: Record<number, number> = {};
+      for (const team of teams) {
+        const damage = team.base_damage + team.battle_damage;
+        if (damage > 0) shares[team.group_id] = Math.trunc((rest * damage) / total);
+      }
+      const ids = Object.keys(shares).map(Number);
+      if (ids.length > 0) {
+        const remainder = rest - ids.reduce((sum, id) => sum + shares[id], 0);
+        const killer =
+          round.killing_team != null && shares[round.killing_team] != null
+            ? round.killing_team
+            : ids.reduce((best, id) => (shares[id] > shares[best] ? id : best), ids[0]);
+        shares[killer] += blow + remainder;
+        for (const [gid, pts] of Object.entries(shares)) {
+          if (pts > 0) {
+            logEvent(
+              arena, round, "REWARD", "SYSTEM", Number(gid), pts,
+              `Saque do Chefe: ${pts} pontos para a equipe${Number(gid) === killer ? " (golpe final!)" : ""}.`,
+            );
+          }
+        }
+      }
+    }
+  }
   round.rewards_credited = true;
 }
 
 function checkVictory(arena: MockArena, round: MockRound): void {
   if (round.hp <= 0 && round.status !== "ENDED") {
     round.status = "ENDED";
-    logEvent(arena, round, "END", "SYSTEM", null, 0, "Chefe derrotado!");
+    round.outcome = "VICTORY";
+    logEvent(arena, round, "END", "SYSTEM", null, 0, "Chefe derrotado! O saque está ao alcance.");
     creditRewards(arena, round);
   }
 }
@@ -336,11 +445,19 @@ function applyAbility(round: MockRound, team: TeamData, ability: MockAbility): s
   if (!EXECUTABLE.has(ability.effect)) return null; // ex.: PR_COST (informativo)
   const value = ability.value;
   if (value <= 0) return null;
+  /** Quanto do escudo da equipe cobre dessa perda (ADR-021). */
+  const absorb = (amount: number): number => {
+    const covered = Math.min(team.shield, amount);
+    team.shield -= covered;
+    return covered;
+  };
   switch (ability.effect) {
     case "PENALTY": {
       const applied = Math.min(team.base_damage, value);
-      team.base_damage -= applied;
-      return `${ability.name}: a equipe perdeu ${applied} de Dano Base!`;
+      const absorbed = absorb(applied);
+      const lost = applied - absorbed;
+      team.base_damage -= lost;
+      return `${ability.name}: a equipe perdeu ${lost} de Dano Base!${absorbed ? ` Escudo absorveu ${absorbed}!` : ""}`;
     }
     case "HEAL": {
       const before = round.hp;
@@ -349,10 +466,12 @@ function applyAbility(round: MockRound, team: TeamData, ability: MockAbility): s
     }
     case "DRAIN": {
       const applied = Math.min(team.base_damage, value);
-      team.base_damage -= applied;
+      const absorbed = absorb(applied);
+      const drained = applied - absorbed;
+      team.base_damage -= drained;
       const before = round.hp;
-      round.hp = Math.min(round.max_hp, round.hp + applied);
-      return `${ability.name}: drenou ${applied} de Dano Base e o chefe recuperou ${round.hp - before} PV!`;
+      round.hp = Math.min(round.max_hp, round.hp + drained);
+      return `${ability.name}: drenou ${drained} de Dano Base e o chefe recuperou ${round.hp - before} PV!${absorbed ? ` Escudo absorveu ${absorbed}!` : ""}`;
     }
     case "CUT":
     case "DISADV": {
@@ -382,7 +501,10 @@ function evaluateCriteriaAbilities(arena: MockArena, round: MockRound, team: Tea
     }
     if (!fires) continue;
     const message = applyAbility(round, team, ability);
-    if (message !== null) logEvent(arena, round, "ABILITY", "BOS", team.group_id, ability.value, message);
+    if (message !== null) {
+      logEvent(arena, round, "ABILITY", "BOS", team.group_id, ability.value, message,
+        { ability_id: ability.id, ability_name: ability.name });
+    }
   }
 }
 
@@ -392,7 +514,10 @@ function evaluateQuestionAbilities(arena: MockArena, round: MockRound, team: Tea
     if (ability.trigger !== "PERGUNTAS" || team.wrong_answers <= 0) continue;
     if (team.wrong_answers % Math.max(1, ability.every) !== 0) continue;
     const message = applyAbility(round, team, ability);
-    if (message !== null) logEvent(arena, round, "ABILITY", "BOS", team.group_id, ability.value, message);
+    if (message !== null) {
+      logEvent(arena, round, "ABILITY", "BOS", team.group_id, ability.value, message,
+        { ability_id: ability.id, ability_name: ability.name });
+    }
   }
 }
 
@@ -432,7 +557,19 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
           criteria: null,
           wrong_answers: 0,
           damage_factor: 1,
+          shield: 0,
+          damage_buff: 0,
+          abilities: TEAM_TEMPLATES.map((template) => ({ ...template, id: template.template_id, charges_left: 0 })),
         };
+      }
+      // Cargas repostas com a escala do bando no start (ADR-020/021).
+      {
+        const n = Object.keys(round.teams).length;
+        for (const team of Object.values(round.teams)) {
+          for (const ability of team.abilities) {
+            ability.charges_left = scaledCharges(ability.max_charges, round.balance_ref_teams, n);
+          }
+        }
       }
       round.status = "RUNNING";
       logEvent(arena, round, "START", "SYSTEM", null, 0, "Batalha iniciada.");
@@ -453,7 +590,14 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
     case "end": {
       if (round.status !== "RUNNING" && round.status !== "PAUSED") return "A batalha não está em andamento.";
       round.status = "ENDED";
-      logEvent(arena, round, "END", "SYSTEM", null, 0, "Batalha encerrada.");
+      if (round.hp <= 0) {
+        round.outcome = "VICTORY";
+        logEvent(arena, round, "END", "SYSTEM", null, 0, "Chefe derrotado! O saque está ao alcance.");
+      } else {
+        round.outcome = "RETREAT";
+        logEvent(arena, round, "END", "SYSTEM", null, 0,
+          "A batalha acabou: o chefe escapa ferido com o saque! (chefe em fuga — dá para continuar na próxima rodada)");
+      }
       creditRewards(arena, round);
       return null;
     }
@@ -472,17 +616,28 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
         checkVictory(arena, round);
         return null;
       }
-      // Acerto: dano com o corte das habilidades (damage_factor).
-      const damage = team.damage_factor < 1
-        ? Math.max(0, Math.round(points * team.damage_factor))
-        : points;
+      // Acerto padrão (sem d20): corte do chefe → buff da equipe → escala (ADR-020).
+      let damage = points;
+      if (team.damage_factor < 1) damage = Math.max(0, Math.round(damage * team.damage_factor));
+      if (damage > 0 && team.damage_buff) {
+        damage = Math.max(0, Math.round(damage * (1 + team.damage_buff)));
+        team.damage_buff = 0;
+      }
+      damage = Math.max(0, Math.round(damage * balanceFactor(round)));
       team.battle_damage += damage;
-      round.hp = Math.max(0, round.hp - damage);
+      dealBossDamage(round, damage, groupId);
       logEvent(arena, round, "DAMAGE", "TEAM", groupId, damage, `A equipe causou ${damage} de dano!`);
       const retaliation = Math.round(damage * round.retaliation_ratio);
-      if (retaliation > 0) {
-        team.retaliation_loss += retaliation;
-        logEvent(arena, round, "RETALIATION", "BOS", groupId, retaliation, `O chefe retaliou! A equipe perdeu ${retaliation} pontos!`);
+      const absorbed = Math.min(team.shield, retaliation);
+      team.shield -= absorbed;
+      const lost = retaliation - absorbed;
+      if (lost > 0) {
+        team.retaliation_loss += lost;
+        logEvent(arena, round, "RETALIATION", "BOS", groupId, lost,
+          `O chefe retaliou! A equipe perdeu ${lost} pontos!${absorbed ? ` Escudo absorveu ${absorbed}!` : ""}`);
+      } else if (absorbed > 0) {
+        logEvent(arena, round, "RETALIATION", "BOS", groupId, 0,
+          `O chefe retaliou! O escudo da equipe absorveu ${absorbed} pontos!`);
       }
       checkVictory(arena, round);
       return null;
@@ -510,10 +665,10 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
         const performance = criteria != null && body.performance == null
           ? derivedPerformance(criteria)
           : Number(body.performance) || defaultPerformance(groupId);
-        const damage = Math.round(performance * round.multiplier);
+        const damage = Math.round(performance * round.multiplier * balanceFactor(round));
         if (damage > 0) {
           team.base_damage += damage;
-          round.hp = Math.max(0, round.hp - damage);
+          dealBossDamage(round, damage, groupId);
           logEvent(arena, round, "DAMAGE", "TEAM", groupId, damage, `A equipe causou ${damage} de dano (desempenho).`);
         } else if (criteria == null) {
           continue;
@@ -533,7 +688,7 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
       const damage = Math.trunc(Number(body.damage) || 0);
       if (damage <= 0) return null;
       team.battle_damage += damage;
-      round.hp = Math.max(0, round.hp - damage);
+      dealBossDamage(round, damage); // ajuste do professor: não conta como golpe final
       round.turn += 1;
       logEvent(arena, round, "DAMAGE", "SYSTEM", groupId, damage, `Dano manual de ${damage}.`);
       checkVictory(arena, round);
@@ -549,12 +704,81 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
       logEvent(arena, round, "REWARD", "SYSTEM", groupId, amount, `Ajuste manual de ${amount} pontos na equipe.`);
       return null;
     }
+    case "use-ability": {
+      if (notRunning) return notRunning;
+      const groupId = Number(body.group_id);
+      const team = round.teams[String(groupId)];
+      if (!team) return "Equipe não registrada nesta batalha.";
+      const abilityId = Number(body.ability_id);
+      const ability = team.abilities.find((item) => item.id === abilityId);
+      if (!ability) return "A equipe não tem essa habilidade.";
+      if (!["STRIKE", "HEAL", "SHIELD", "BUFF"].includes(ability.effect)) return "Efeito inválido.";
+      if (ability.charges_left <= 0) {
+        return `${ability.name} ficou sem cargas — renove as habilidades da equipe.`;
+      }
+      // d20 rola aqui no mock também (no real é o servidor — ADR-019).
+      const roll = 1 + Math.floor(Math.random() * 20);
+      const multiplier = d20Multiplier(roll);
+      const effective = Math.floor(ability.value * multiplier + 0.5);
+      ability.charges_left -= 1;
+      const verdict = multiplier > 1 ? " (crítico!)" : multiplier < 1 ? " (falha!)" : "";
+      let value = effective;
+      let message: string;
+      switch (ability.effect) {
+        case "STRIKE": {
+          const damage = Math.floor(effective * balanceFactor(round) + 0.5);
+          team.battle_damage += damage;
+          dealBossDamage(round, damage, groupId);
+          value = damage;
+          message = `${ability.name} (d20: ${roll})${verdict}: ${damage} de dano direto ao chefe!`;
+          break;
+        }
+        case "HEAL": {
+          const healed = Math.min(team.retaliation_loss, effective);
+          team.retaliation_loss -= healed;
+          value = healed;
+          message = healed > 0
+            ? `${ability.name} (d20: ${roll})${verdict}: recuperou ${healed} pontos perdidos!`
+            : `${ability.name} (d20: ${roll})${verdict}: não havia pontos a curar.`;
+          break;
+        }
+        case "SHIELD":
+          team.shield += effective;
+          value = effective;
+          message = `${ability.name} (d20: ${roll})${verdict}: escudo de ${effective} pontos!`;
+          break;
+        default: // BUFF
+          team.damage_buff += effective / 100;
+          value = effective;
+          message = `${ability.name} (d20: ${roll})${verdict}: próximo ataque +${effective}%!`;
+      }
+      logEvent(arena, round, "ABILITY", "TEAM", groupId, value, message,
+        { roll, ability_id: ability.id, ability_name: ability.name });
+      checkVictory(arena, round);
+      return null;
+    }
+    case "renew-abilities": {
+      if (round.status !== "RUNNING" && round.status !== "PAUSED") return "A batalha não está em andamento.";
+      const groupId = Number(body.group_id);
+      const team = round.teams[String(groupId)];
+      if (!team) return "Equipe não registrada nesta batalha.";
+      if (team.abilities.length === 0) return "A equipe não tem habilidades para renovar.";
+      const n = Object.keys(round.teams).length;
+      for (const ability of team.abilities) {
+        ability.charges_left = scaledCharges(ability.max_charges, round.balance_ref_teams, n);
+      }
+      logEvent(arena, round, "ABILITY", "SYSTEM", groupId, 0, "Habilidades da equipe renovadas.");
+      return null;
+    }
     default:
       return "Ação desconhecida.";
   }
 }
 
-const ACTIONS = ["start", "pause", "resume", "end", "attack", "apply-performance", "damage", "override"];
+const ACTIONS = [
+  "start", "pause", "resume", "end", "attack", "apply-performance", "damage", "override",
+  "use-ability", "renew-abilities",
+];
 
 export const arenaHandlers = [
   // Chefes para o formulário de nova rodada (o catálogo mock usa /mock-catalog/).
@@ -588,6 +812,9 @@ export const arenaHandlers = [
       multiplier?: number;
       retaliation_ratio?: number;
       reward_factor?: number;
+      treasure?: number;
+      balance_ref_teams?: number;
+      initial_hp?: number;
     };
     try {
       body = (await request.json()) as typeof body;
@@ -600,17 +827,24 @@ export const arenaHandlers = [
     try {
       const arena = read();
       const maxHp = Math.max(1, Number(body.max_hp) || boss.max_hp);
+      const initialHp = Number(body.initial_hp) > 0
+        ? Math.min(Math.trunc(Number(body.initial_hp)), maxHp)
+        : maxHp;
       const round: MockRound = {
         id: arena.nextRoundId++,
         name,
         status: "CONFIG",
-        hp: maxHp,
+        hp: initialHp,
         max_hp: maxHp,
         turn: 0,
         level: Math.max(1, Number(body.level) || 1),
         multiplier: Number(body.multiplier) || 1.5,
         retaliation_ratio: Number(body.retaliation_ratio ?? 0.25),
         reward_factor: Number(body.reward_factor ?? 1),
+        balance_ref_teams: Number(body.balance_ref_teams ?? 4),
+        treasure: Math.max(0, Math.trunc(Number(body.treasure) || 0)),
+        outcome: "",
+        killing_team: null,
         boss: { ...boss },
         teams: {},
         events: [],

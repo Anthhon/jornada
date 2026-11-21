@@ -14,6 +14,8 @@ from .serializers import (
     DamageSerializer,
     OverrideSerializer,
     PerformanceSerializer,
+    RenewAbilitiesSerializer,
+    UseAbilitySerializer,
 )
 
 
@@ -104,4 +106,26 @@ class ArenaRoundViewSet(viewsets.ModelViewSet):
         return self._run(
             request, services.adjust_points, self.get_object(),
             data["group_id"], data["amount"],
+        )
+
+    @action(detail=True, methods=["post"], url_path="use-ability")
+    def use_ability(self, request, pk=None):
+        """Habilidade de equipe com d20 (rolado aqui, no servidor — ADR-019)."""
+        serializer = UseAbilitySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        return self._run(
+            request, services.use_ability, self.get_object(),
+            data["group_id"], data["ability_id"],
+        )
+
+    @action(detail=True, methods=["post"], url_path="renew-abilities")
+    def renew_abilities(self, request, pk=None):
+        """Professor repõe as cargas das habilidades da equipe (ADR-021)."""
+        serializer = RenewAbilitiesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        return self._run(
+            request, services.renew_abilities, self.get_object(),
+            data["group_id"],
         )

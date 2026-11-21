@@ -32,6 +32,12 @@ export async function createRound(payload: {
   multiplier?: number;
   retaliation_ratio?: number;
   reward_factor?: number;
+  /** Escala do bando (0 = desligada, ADR-020). */
+  balance_ref_teams?: number;
+  /** Saque do chefe em pontos (ADR-018). */
+  treasure?: number;
+  /** PV inicial: continuar um chefe em fuga (ADR-018). */
+  initial_hp?: number;
 }): Promise<ArenaRound> {
   const { data } = await api.post(`${base}/`, payload);
   return arenaRoundSchema.parse(data);
@@ -61,4 +67,10 @@ export const arenaService = {
     post(id, "damage", payload),
   override: (id: number, payload: { group_id: number; amount: number }) =>
     post(id, "override", payload),
+  /** Habilidade de equipe — o d20 é rolado no servidor (ADR-019). */
+  useAbility: (id: number, payload: { group_id: number; ability_id: number }) =>
+    post(id, "use-ability", payload),
+  /** Professor repõe as cargas das habilidades da equipe (ADR-021). */
+  renewAbilities: (id: number, payload: { group_id: number }) =>
+    post(id, "renew-abilities", payload),
 };

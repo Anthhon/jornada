@@ -62,6 +62,29 @@ class ArenaRound(models.Model):
             verbose_name="Fator de recompensa",
             help_text="Pontos ganhos = dano total x fator.",
             )
+    balance_ref_teams = models.PositiveIntegerField(
+            default=4,
+            verbose_name="Escala do bando (ref. equipes)",
+            help_text=(
+                "0 = desligado; com N equipes ativas o dano da equipe vale "
+                "x(ref/N), limitado a [0.5, 2] (ADR-020)."
+            ),
+            )
+    treasure = models.PositiveIntegerField(
+            default=0,
+            verbose_name="Saque do chefe (pontos)",
+            help_text="Rateado entre as equipes só se o chefe for derrotado (ADR-018).",
+            )
+    outcome = models.CharField(
+            max_length=9,
+            blank=True,
+            default="",
+            choices=[
+                ("VICTORY", "Vitória (chefe derrotado)"),
+                ("RETREAT", "Derrota (chefe escapa com o saque)"),
+            ],
+            verbose_name="Desfecho",
+            )
     status = models.CharField(
             max_length=7,
             choices=Status.choices,
@@ -107,9 +130,19 @@ class ArenaRound(models.Model):
     def __str__(self):
         return f"{self.name} ({self.get_status_display()})"
 
+    def __init__(self, *args, **kwargs):
+        """Marca se ``hp`` veio explícito (para o rematch de chefe em fuga).
+
+        Sem ``hp`` nos kwargs, o ``save`` nasce com PV cheio (M-41); com
+        ``hp`` explícito (``initial_hp`` da API, ADR-018), mantém o valor —
+        assim a próxima rodada contra o mesmo chefe continua do dano.
+        """
+        self._explicit_hp = "hp" in kwargs
+        super().__init__(*args, **kwargs)
+
     def save(self, *args, **kwargs):
         """Rodada nova nasce com PV cheio: ``hp`` acompanha ``max_hp`` (M-41)."""
-        if self._state.adding:
+        if self._state.adding and not self._explicit_hp:
             self.hp = self.max_hp
         super().save(*args, **kwargs)
 
@@ -157,6 +190,16 @@ class TeamContribution(models.Model):
             default=1.0,
             verbose_name="Fator de dano de ataque",
             help_text="Corte de habilidade sobre o ataque (0.5 = metade).",
+            )
+    shield = models.IntegerField(
+            default=0,
+            verbose_name="Escudo (pontos)",
+            help_text="Absorve retaliações/penalidades até zerar (ADR-021).",
+            )
+    damage_buff = models.FloatField(
+            default=0.0,
+            verbose_name="Bônus no próximo ataque",
+            help_text="Fração extra (0.3 = +30%) consumida no próximo acerto (ADR-021).",
             )
 
     class Meta:
@@ -228,6 +271,24 @@ class ArenaEvent(models.Model):
     value = models.IntegerField(
             default=0,
             help_text="Dano/pontos efetivos.",
+            )
+    roll = models.PositiveSmallIntegerField(
+            null=True,
+            blank=True,
+            verbose_name="Rolagem (d20)",
+            help_text="Resultado do dado no uso de uma habilidade (ADR-019).",
+            )
+    ability_id = models.IntegerField(
+            null=True,
+            blank=True,
+            verbose_name="ID da habilidade",
+            help_text="Habilidade executada, sem parsing da mensagem (ADR-022).",
+            )
+    ability_name = models.CharField(
+            max_length=80,
+            null=True,
+            blank=True,
+            verbose_name="Nome da habilidade",
             )
     message = models.CharField(
             max_length=255,

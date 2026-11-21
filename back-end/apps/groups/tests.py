@@ -163,3 +163,99 @@ class GroupManagementTests(TestCase):
         )
         self.assertFalse(resp.data["is_active"])
         self.assertEqual(len(anon_client().get("/api/groups/?active=true").data), 1)
+
+
+def _templates():
+    """8 modelos (2 temas x 3 básicas + 1 ultimate)."""
+    from .models import TeamAbilityTemplate
+
+    specs = []
+    for theme in ("Floresta", "Vulcão"):
+        for i in range(3):
+            specs.append((theme, f"Basica {i}", "BASIC"))
+        specs.append((theme, "Ultimate", "ULTIMATE"))
+    return {
+        (t.theme, t.name): t
+        for t in (
+            TeamAbilityTemplate.objects.create(
+                theme=theme, name=name, kind=kind, effect="STRIKE",
+                value=100 if kind == "BASIC" else 500,
+            )
+            for theme, name, kind in specs
+        )
+    }
+
+
+class TeamAbilityAssignmentTests(TestCase):
+    """Professor escolhe 3+1 habilidades na criação da equipe (ADR-021)."""
+
+    def setUp(self):
+        self.client = staff_client()
+        self.tpl = _templates()
+        self.basic = [
+            self.tpl[("Floresta", f"Basica {i}")].id for i in range(3)
+        ]
+        self.ultimate = self.tpl[("Floresta", "Ultimate")].id
+
+    def _create(self, abilities):
+        return self.client.post(
+            "/api/groups/",
+            {"name": "Equipe Habilidades", "abilities": abilities},
+            format="json",
+        )
+
+    def test_criacao_com_3_basicas_e_1_ultimate(self):
+        resp = self._create(self.basic + [self.ultimate])
+        self.assertEqual(resp.status_code, 201)
+        group = Group.objects.get(name="Equipe Habilidades")
+        self.assertEqual(group.abilities.count(), 4)
+        kinds = sorted(
+            group.abilities.values_list("template__kind", flat=True)
+        )
+        self.assertEqual(kinds, ["BASIC", "BASIC", "BASIC", "ULTIMATE"])
+
+    def test_menos_de_quatro_erro(self):
+        resp = self._create(self.basic[:2] + [self.ultimate])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_duas_ultimates_erro(self):
+        other_ult = self.tpl[("Vulcão", "Ultimate")].id
+        resp = self._create(self.basic[:2] + [self.ultimate, other_ult])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_template_inexistente_erro(self):
+        resp = self._create(self.basic + [999999])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_habilidade_repetida_erro(self):
+        resp = self._create([self.basic[0], self.basic[0],
+                             self.basic[1], self.ultimate])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_patch_substitui_a_escolha_sem_duplicar(self):
+        group = Group.objects.create(name="Troca")
+        for tid in self.basic + [self.ultimate]:
+            group.abilities.create(template_id=tid)
+        novas = [
+            self.tpl[("Vulcão", f"Basica {i}")].id for i in range(3)
+        ] + [self.tpl[("Vulcão", "Ultimate")].id]
+        resp = self.client.patch(
+            f"/api/groups/{group.id}/", {"abilities": novas}, format="json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        group.refresh_from_db()
+        self.assertEqual(group.abilities.count(), 4)
+        themes = set(
+            group.abilities.values_list("template__theme", flat=True)
+        )
+        self.assertEqual(themes, {"Vulcão"})
+
+    def test_listagem_publica_com_filtro_de_tema(self):
+        resp = anon_client().get("/api/team-abilities/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data), 8)
+        resp = anon_client().get("/api/team-abilities/?theme=Vulcão")
+        self.assertEqual(len(resp.data), 4)
+        self.assertTrue(all(
+            item["theme"] == "Vulcão" for item in resp.data
+        ))

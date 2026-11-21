@@ -10,6 +10,9 @@
 #   5. suíte de testes (motor puro + API)
 #   6. fumaça HTTP REAL: ciclo completo da raid (criar → start → attack →
 #      state público → end → recompensa no /api/leaderboard/ → sem duplicar)
+#   7. fumaça do desfecho/progressão (ADR-018..021): saque na vitória,
+#      fuga sem saque, escala do bando, initial_hp (chefe em fuga),
+#      habilidade de equipe com d20 + cargas + renovação
 #
 # Uso:   bash tools/validar_arena.sh
 # Exit:  0 = tudo verde | 1 = falhou algum check
@@ -155,10 +158,11 @@ print(f'seed ok boss={b.id} group={g.id}')" 2>&1); then
                 ok "login JWT → access token"
                 AUTH="Authorization: Bearer $token"
 
-                # cria a rodada (201)
+                # cria a rodada (201) — escala do bando desligada (ADR-020)
+                # para os valores exatos desta fumaça
                 rid=$(curl -s -X POST "$BASE/api/arena/rounds/" \
                         -H "$AUTH" -H 'Content-Type: application/json' \
-                        -d "{\"name\":\"Rodada Gate\",\"boss\":$BOSS_ID,\"max_hp\":15000}" \
+                        -d "{\"name\":\"Rodada Gate\",\"boss\":$BOSS_ID,\"max_hp\":15000,\"balance_ref_teams\":0}" \
                     | "$PY" -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
                 if [ -n "$rid" ]; then
                     ok "POST /api/arena/rounds/ → id $rid"
@@ -212,7 +216,7 @@ print("1" if row and row["points"] == 75 else "0")' 2>/dev/null)
                     # --- habilidades do chefe (ADR-017) ---------------------
                     rid2=$(curl -s -X POST "$BASE/api/arena/rounds/" \
                             -H "$AUTH" -H 'Content-Type: application/json' \
-                            -d "{\"name\":\"Rodada Gate 2\",\"boss\":$BOSS_ID,\"max_hp\":15000}" \
+                            -d "{\"name\":\"Rodada Gate 2\",\"boss\":$BOSS_ID,\"max_hp\":15000,\"balance_ref_teams\":0}" \
                         | "$PY" -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
                     if [ -n "$rid2" ]; then
                         code=$(http_code -X POST "$BASE/api/arena/rounds/$rid2/start/" -H "$AUTH")
@@ -253,6 +257,152 @@ print("1" if good else "0")' 2>/dev/null)
             fi
         fi
     fi
+fi
+
+# --- 7. fumaça: saque, escala e habilidades de equipe ------------------------
+title "7. Saque + escala do bando + habilidades de equipe (ADR-018..021)"
+if [ -n "${AUTH:-}" ] && [ -n "${BOSS_ID:-}" ] && [ -n "${GROUP_ID:-}" ]; then
+    # seed: um template e a habilidade atribuída à equipe do gate
+    if ! out=$(DB_NAME="$TMP_DB" "$PY" "$BE/manage.py" shell -c "
+from apps.groups.models import Group, GroupAbility, TeamAbilityTemplate
+g = Group.objects.get(name='Equipe Arena')
+t, _ = TeamAbilityTemplate.objects.get_or_create(
+    theme='Gate', name='Golpe Gate', defaults=dict(
+        kind='BASIC', effect='STRIKE', value=100, max_charges=2))
+GroupAbility.objects.filter(group=g).delete()
+ga = GroupAbility.objects.create(group=g, template=t)
+print(f'abilities ok id={ga.id}')" 2>&1); then
+        bad "seed de habilidade de equipe falhou" "$out"
+    else
+        ok "template + habilidade atribuída à equipe"
+        AB_ID=$(printf '%s' "$out" | grep -o 'id=[0-9]*' | grep -o '[0-9]*')
+
+        # 7a. saque na vitória: 100 PV, saque 500, escala desligada
+        rid3=$(curl -s -X POST "$BASE/api/arena/rounds/" \
+                -H "$AUTH" -H 'Content-Type: application/json' \
+                -d "{\"name\":\"Rodada Saque\",\"boss\":$BOSS_ID,\"max_hp\":100,\"treasure\":500,\"balance_ref_teams\":0}" \
+            | "$PY" -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+        curl -s -X POST "$BASE/api/arena/rounds/$rid3/start/" -H "$AUTH" > /dev/null
+        curl -s -X POST "$BASE/api/arena/rounds/$rid3/attack/" -H "$AUTH" \
+             -H 'Content-Type: application/json' \
+             -d "{\"group_id\":$GROUP_ID,\"correct\":true,\"points\":60}" > /dev/null
+        curl -s -X POST "$BASE/api/arena/rounds/$rid3/attack/" -H "$AUTH" \
+             -H 'Content-Type: application/json' \
+             -d "{\"group_id\":$GROUP_ID,\"correct\":true,\"points\":50}" > /dev/null
+        saque_ok=$(curl -s "$BASE/api/arena/rounds/$rid3/state/" | "$PY" -c '
+import sys, json
+d = json.load(sys.stdin)
+saque = [e for e in d["events"] if "Saque do Chefe" in e["message"]]
+good = (d["outcome"] == "VICTORY" and d["treasure"] == 500
+        and len(saque) == 1 and "golpe final" in saque[0]["message"]
+        and "golpe final" in saque[0]["message"])
+print("1" if good else "0")' 2>/dev/null)
+        [ "$saque_ok" = "1" ] && ok "vitória → outcome VICTORY + saque 500 rateado (golpe final)" \
+                             || bad "saque na vitória fora do esperado" "$(curl -s "$BASE/api/arena/rounds/$rid3/state/")"
+
+        # placar: 75 (seção 6) + 83 proporcional (110 − 27) + 500 do saque
+        lb_ok=$(curl -s "$BASE/api/leaderboard/" | "$PY" -c '
+import sys, json
+data = json.load(sys.stdin)
+row = next((r for r in data if r["name"] == "Equipe Arena"), None)
+print("1" if row and row["points"] == 658 else "0")' 2>/dev/null)
+        [ "$lb_ok" = "1" ] && ok "placar = 658 (75 + 83 + 500 de saque)" \
+                           || bad "saque não entrou no placar" "$(curl -s "$BASE/api/leaderboard/")"
+
+        # 7b. escala do bando: ref=4 com 1 equipe → dano ×2
+        rid4=$(curl -s -X POST "$BASE/api/arena/rounds/" \
+                -H "$AUTH" -H 'Content-Type: application/json' \
+                -d "{\"name\":\"Rodada Escala\",\"boss\":$BOSS_ID,\"max_hp\":15000,\"balance_ref_teams\":4}" \
+            | "$PY" -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+        curl -s -X POST "$BASE/api/arena/rounds/$rid4/start/" -H "$AUTH" > /dev/null
+        curl -s -X POST "$BASE/api/arena/rounds/$rid4/attack/" -H "$AUTH" \
+             -H 'Content-Type: application/json' \
+             -d "{\"group_id\":$GROUP_ID,\"correct\":true,\"points\":100}" > /dev/null
+        escala_ok=$(curl -s "$BASE/api/arena/rounds/$rid4/state/" | "$PY" -c '
+import sys, json
+d = json.load(sys.stdin)
+t = d["teams"][0]
+good = (d["balance"] == 2.0 and t["battle_damage"] == 200
+        and t["retaliation_loss"] == 50 and d["hp"] == 14800)
+print("1" if good else "0")' 2>/dev/null)
+        [ "$escala_ok" = "1" ] && ok "escala ×2 (ref 4 ÷ 1 equipe): dano 200, retaliação 50" \
+                              || bad "escala do bando fora do esperado" "$(curl -s "$BASE/api/arena/rounds/$rid4/state/")"
+
+        # 7c. fuga: encerra com PV > 0 → RETREAT, sem saque
+        rid5=$(curl -s -X POST "$BASE/api/arena/rounds/" \
+                -H "$AUTH" -H 'Content-Type: application/json' \
+                -d "{\"name\":\"Rodada Fuga\",\"boss\":$BOSS_ID,\"max_hp\":15000,\"treasure\":500,\"balance_ref_teams\":0}" \
+            | "$PY" -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+        curl -s -X POST "$BASE/api/arena/rounds/$rid5/start/" -H "$AUTH" > /dev/null
+        curl -s -X POST "$BASE/api/arena/rounds/$rid5/attack/" -H "$AUTH" \
+             -H 'Content-Type: application/json' \
+             -d "{\"group_id\":$GROUP_ID,\"correct\":true,\"points\":40}" > /dev/null
+        curl -s -X POST "$BASE/api/arena/rounds/$rid5/end/" -H "$AUTH" > /dev/null
+        fuga_ok=$(curl -s "$BASE/api/arena/rounds/$rid5/state/" | "$PY" -c '
+import sys, json
+d = json.load(sys.stdin)
+saque = [e for e in d["events"] if "Saque do Chefe" in e["message"]]
+print("1" if d["outcome"] == "RETREAT" and not saque else "0")' 2>/dev/null)
+        [ "$fuga_ok" = "1" ] && ok "derrota → RETREAT (chefe escapa com o saque)" \
+                             || bad "fuga sem desfecho/saque correto" "$(curl -s "$BASE/api/arena/rounds/$rid5/state/")"
+
+        # 7d. rematch: initial_hp (chefe em fuga continua do dano)
+        hp_echo=$(curl -s -X POST "$BASE/api/arena/rounds/" \
+                -H "$AUTH" -H 'Content-Type: application/json' \
+                -d "{\"name\":\"Rodada Rematch\",\"boss\":$BOSS_ID,\"max_hp\":15000,\"initial_hp\":9000,\"balance_ref_teams\":0}" \
+            | "$PY" -c 'import sys,json; d=json.load(sys.stdin); print("1" if d.get("hp")==9000 else "0")' 2>/dev/null)
+        [ "$hp_echo" = "1" ] && ok "initial_hp=9000 → nasce ferido (chefe em fuga)" \
+                             || bad "initial_hp não respeitado"
+
+        # 7e. habilidade de equipe com d20 + renovação (ADR-019/021)
+        rid6=$(curl -s -X POST "$BASE/api/arena/rounds/" \
+                -H "$AUTH" -H 'Content-Type: application/json' \
+                -d "{\"name\":\"Rodada Habilidades\",\"boss\":$BOSS_ID,\"max_hp\":15000,\"balance_ref_teams\":0}" \
+            | "$PY" -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+        curl -s -X POST "$BASE/api/arena/rounds/$rid6/start/" -H "$AUTH" > /dev/null
+        ab_id="$AB_ID"
+        curl -s -X POST "$BASE/api/arena/rounds/$rid6/use-ability/" -H "$AUTH" \
+             -H 'Content-Type: application/json' \
+             -d "{\"group_id\":$GROUP_ID,\"ability_id\":$ab_id}" > /dev/null
+        uso_ok=$(curl -s "$BASE/api/arena/rounds/$rid6/state/" | "$PY" -c '
+import sys, json
+d = json.load(sys.stdin)
+t = d["teams"][0]
+ev = next((e for e in d["events"] if e["kind"] == "ABILITY"), None)
+good = (t["abilities"] and t["abilities"][0]["charges_left"] == 1
+        and t["battle_damage"] in (50, 100, 200)   # d20: falha/normal/crítico
+        and ev is not None and ev["actor"] == "TEAM"
+        and ev["roll"] and 1 <= ev["roll"] <= 20
+        and ev["ability_name"] == "Golpe Gate")
+print("1" if good else "0")' 2>/dev/null)
+        [ "$uso_ok" = "1" ] && ok "use-ability: d20 1..20 no evento, carga 1, dano conforme rolou" \
+                            || bad "uso de habilidade fora do esperado" "$(curl -s "$BASE/api/arena/rounds/$rid6/state/")"
+
+        # 2º uso ok (carga 1→0), 3º uso sem carga → 400; renovação volta p/ 2
+        code2=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/arena/rounds/$rid6/use-ability/" \
+                -H "$AUTH" -H 'Content-Type: application/json' \
+                -d "{\"group_id\":$GROUP_ID,\"ability_id\":$ab_id}")
+        code3=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/arena/rounds/$rid6/use-ability/" \
+                -H "$AUTH" -H 'Content-Type: application/json' \
+                -d "{\"group_id\":$GROUP_ID,\"ability_id\":$ab_id}")
+        if [ "$code2" = "200" ] && [ "$code3" = "400" ]; then
+            ok "2º use-ability → 200; 3º → 400 (cargas esgotadas)"
+        else
+            bad "bloqueio de cargas errado (2º=$code2, 3º=$code3)"
+        fi
+        curl -s -X POST "$BASE/api/arena/rounds/$rid6/renew-abilities/" -H "$AUTH" \
+             -H 'Content-Type: application/json' \
+             -d "{\"group_id\":$GROUP_ID}" > /dev/null
+        renew_ok=$(curl -s "$BASE/api/arena/rounds/$rid6/state/" | "$PY" -c '
+import sys, json
+d = json.load(sys.stdin)
+t = d["teams"][0]
+print("1" if t["abilities"] and t["abilities"][0]["charges_left"] == 2 else "0")' 2>/dev/null)
+        [ "$renew_ok" = "1" ] && ok "renew-abilities → cargas de volta em 2" \
+                              || bad "renovação não repos as cargas"
+    fi
+else
+    bad "sem token/ids para a fumaça 7 (veja a seção 6)"
 fi
 
 # --- resumo ------------------------------------------------------------------
