@@ -1,4 +1,5 @@
 import { BookOpen, CalendarDays, Castle, Flame, KeyRound, ScrollText, Shield, Skull, Users } from "@/components/icons/rpg-icons";
+import { Trophy } from "lucide-react";
 import type { ComponentType } from "react";
 import { Crest } from "@/features/journey/components/crest";
 
@@ -17,6 +18,7 @@ export const sidebarSections: { id: string; label: string; items: SidebarItem[] 
     { href: "/schedule", label: "Agenda de incursões", icon: CalendarDays, countKey: "agenda" },
     { href: "/dashboard", label: "Salão da Guilda", icon: Castle },
     { href: "/missions", label: "Missões", icon: Crest, countKey: "missions" },
+    { href: "/arena", label: "Arena", icon: Trophy },
   ] },
   { id: "characters", label: "Personagens", items: [
     { href: "/students", label: "Aventureiros", icon: Users },

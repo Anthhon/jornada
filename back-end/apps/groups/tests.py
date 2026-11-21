@@ -1,8 +1,9 @@
+from django.core.management import call_command
 from django.test import TestCase
 
 from apps.test_helpers import anon_client, staff_client, user_client
 
-from .models import Group
+from .models import Group, GroupAbility, TeamAbilityTemplate
 
 
 class GroupApiTests(TestCase):
@@ -101,10 +102,10 @@ class GroupManagementTests(TestCase):
         self.Student = Student
         self.grupo = Group.objects.create(name="Alfa")
         self.outro = Group.objects.create(name="Beta")
-        self.ana = Student.objects.create(name="Ana", group=self.grupo)
-        self.bia = Student.objects.create(name="Bia", group=self.grupo)
-        self.caio = Student.objects.create(name="Caio", group=self.outro)
-        self.davi = Student.objects.create(name="Davi")
+        self.ana = Student.objects.create(name="Ana", group=self.grupo, matricula="900001")
+        self.bia = Student.objects.create(name="Bia", group=self.grupo, matricula="900002")
+        self.caio = Student.objects.create(name="Caio", group=self.outro, matricula="900003")
+        self.davi = Student.objects.create(name="Davi", matricula="900004")
 
     def test_set_members_substitui_a_lista_inteira(self):
         resp = staff_client().post(
@@ -163,3 +164,202 @@ class GroupManagementTests(TestCase):
         )
         self.assertFalse(resp.data["is_active"])
         self.assertEqual(len(anon_client().get("/api/groups/?active=true").data), 1)
+
+
+def _templates():
+    """8 modelos (2 temas x 3 básicas + 1 ultimate)."""
+    from .models import TeamAbilityTemplate
+
+    specs = []
+    for theme in ("Floresta", "Vulcão"):
+        for i in range(3):
+            specs.append((theme, f"Basica {i}", "BASIC"))
+        specs.append((theme, "Ultimate", "ULTIMATE"))
+    return {
+        (t.theme, t.name): t
+        for t in (
+            TeamAbilityTemplate.objects.create(
+                theme=theme, name=name, kind=kind, effect="STRIKE",
+                value=100 if kind == "BASIC" else 500,
+            )
+            for theme, name, kind in specs
+        )
+    }
+
+
+class TeamAbilityAssignmentTests(TestCase):
+    """Professor escolhe 3+1 habilidades na criação da equipe (ADR-021)."""
+
+    def setUp(self):
+        self.client = staff_client()
+        self.tpl = _templates()
+        self.basic = [
+            self.tpl[("Floresta", f"Basica {i}")].id for i in range(3)
+        ]
+        self.ultimate = self.tpl[("Floresta", "Ultimate")].id
+
+    def _create(self, abilities):
+        return self.client.post(
+            "/api/groups/",
+            {"name": "Equipe Habilidades", "abilities": abilities},
+            format="json",
+        )
+
+    def test_criacao_com_3_basicas_e_1_ultimate(self):
+        resp = self._create(self.basic + [self.ultimate])
+        self.assertEqual(resp.status_code, 201)
+        group = Group.objects.get(name="Equipe Habilidades")
+        self.assertEqual(group.abilities.count(), 4)
+        kinds = sorted(
+            group.abilities.values_list("template__kind", flat=True)
+        )
+        self.assertEqual(kinds, ["BASIC", "BASIC", "BASIC", "ULTIMATE"])
+
+    def test_menos_de_quatro_erro(self):
+        resp = self._create(self.basic[:2] + [self.ultimate])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_duas_ultimates_erro(self):
+        other_ult = self.tpl[("Vulcão", "Ultimate")].id
+        resp = self._create(self.basic[:2] + [self.ultimate, other_ult])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_template_inexistente_erro(self):
+        resp = self._create(self.basic + [999999])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_habilidade_repetida_erro(self):
+        resp = self._create([self.basic[0], self.basic[0],
+                             self.basic[1], self.ultimate])
+        self.assertEqual(resp.status_code, 400)
+
+    def test_patch_substitui_a_escolha_sem_duplicar(self):
+        group = Group.objects.create(name="Troca")
+        for tid in self.basic + [self.ultimate]:
+            group.abilities.create(template_id=tid)
+        novas = [
+            self.tpl[("Vulcão", f"Basica {i}")].id for i in range(3)
+        ] + [self.tpl[("Vulcão", "Ultimate")].id]
+        resp = self.client.patch(
+            f"/api/groups/{group.id}/", {"abilities": novas}, format="json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        group.refresh_from_db()
+        self.assertEqual(group.abilities.count(), 4)
+        themes = set(
+            group.abilities.values_list("template__theme", flat=True)
+        )
+        self.assertEqual(themes, {"Vulcão"})
+
+    def test_listagem_publica_com_filtro_de_tema(self):
+        resp = anon_client().get("/api/team-abilities/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data), 8)
+        resp = anon_client().get("/api/team-abilities/?theme=Vulcão")
+        self.assertEqual(len(resp.data), 4)
+        self.assertTrue(all(
+            item["theme"] == "Vulcão" for item in resp.data
+        ))
+
+    def test_atribuicao_nasce_com_cargas_base(self):
+        resp = self._create(self.basic + [self.ultimate])
+        self.assertEqual(resp.status_code, 201)
+        group = Group.objects.get(name="Equipe Habilidades")
+        for ability in group.abilities.all():
+            self.assertEqual(ability.charges_left, ability.template.max_charges)
+
+    def test_troca_preserva_cargas_das_que_ficam(self):
+        extra = TeamAbilityTemplate.objects.create(
+            theme="Floresta", name="Basica Extra", kind="BASIC",
+            effect="STRIKE", value=90, max_charges=3,
+        )
+        group = Group.objects.create(name="Cargas")
+        for tid in self.basic + [self.ultimate]:
+            group.abilities.create(template_id=tid, charges_left=1)
+        novas = [extra.id, self.basic[1], self.basic[2], self.ultimate]
+        resp = self.client.patch(
+            f"/api/groups/{group.id}/", {"abilities": novas}, format="json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        group.refresh_from_db()
+        self.assertEqual(group.abilities.count(), 4)
+        # A que ficou mantém a carga gast; a nova nasce com a base.
+        self.assertEqual(
+            group.abilities.get(template_id=self.basic[1]).charges_left, 1
+        )
+        nova = group.abilities.get(template_id=extra.id)
+        self.assertEqual(nova.charges_left, nova.template.max_charges)
+        self.assertFalse(
+            group.abilities.filter(template_id=self.basic[0]).exists()
+        )
+
+    def test_tema_misturado_rejeitado(self):
+        mista = [
+            self.basic[0], self.basic[1],
+            self.tpl[("Vulcão", "Basica 2")].id, self.ultimate,
+        ]
+        resp = self.client.post(
+            "/api/groups/", {"name": "Misto", "abilities": mista}, format="json"
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(Group.objects.filter(name="Misto").count(), 0)
+
+
+class SeedHabilidadesEquipeTests(TestCase):
+    """seed_habilidades_equipe: catálogo por tema + atribuição 3+1 (ADR-021)."""
+
+    def test_atribui_3plus1_escalado_e_pula_inativas(self):
+        Group.objects.create(name="Alfa")
+        Group.objects.create(name="Beta")
+        Group.objects.create(name="Gamma", is_active=False)
+        call_command("seed_habilidades_equipe")
+        self.assertEqual(TeamAbilityTemplate.objects.count(), 8)
+        for name in ("Alfa", "Beta"):
+            group = Group.objects.get(name=name)
+            self.assertEqual(group.abilities.count(), 4)
+            kinds = sorted(
+                group.abilities.values_list("template__kind", flat=True)
+            )
+            self.assertEqual(kinds, ["BASIC", "BASIC", "BASIC", "ULTIMATE"])
+            # escala do bando pela referência padrão (4): ref=4, n=2 ativas
+            basic = set(
+                group.abilities.filter(
+                    template__kind="BASIC"
+                ).values_list("charges_left", flat=True)
+            )
+            ultimate = set(
+                group.abilities.filter(
+                    template__kind="ULTIMATE"
+                ).values_list("charges_left", flat=True)
+            )
+            self.assertEqual(basic, {4})
+            self.assertEqual(ultimate, {2})
+        self.assertEqual(
+            Group.objects.get(name="Gamma").abilities.count(), 0
+        )
+
+    def test_repetir_nao_duplica_e_respeita_escolha_do_professor(self):
+        Group.objects.create(name="Alfa")
+        call_command("seed_habilidades_equipe")
+        self.assertEqual(GroupAbility.objects.count(), 4)
+        # escolha do professor: troca para Vulcão antes de rodar de novo
+        alfa = Group.objects.get(name="Alfa")
+        vulcao = list(
+            TeamAbilityTemplate.objects.filter(theme="Vulcão")
+            .order_by("kind", "name")
+        )
+        alfa.abilities.all().delete()
+        for template in vulcao:
+            alfa.abilities.create(template=template)
+        call_command("seed_habilidades_equipe")
+        self.assertEqual(GroupAbility.objects.count(), 4)
+        self.assertEqual(
+            set(alfa.abilities.values_list("template__theme", flat=True)),
+            {"Vulcão"},
+        )
+
+    def test_flag_no_assign_so_cria_templates(self):
+        Group.objects.create(name="Alfa")
+        call_command("seed_habilidades_equipe", "--no-assign")
+        self.assertEqual(TeamAbilityTemplate.objects.count(), 8)
+        self.assertEqual(GroupAbility.objects.count(), 0)

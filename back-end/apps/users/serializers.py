@@ -1,9 +1,16 @@
 from django.contrib.auth.models import Group, User
+from django.core.validators import RegexValidator
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 from apps.groups.models import Group as TeamGroup
 from .models import Profile, Student
 
 # Convert objects into JSON responses
+
+MATRICULA_VALIDADOR = RegexValidator(
+    regex=r"^[0-9]{6}$",
+    message="A matrícula deve ter exatamente 6 dígitos.",
+)
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -66,12 +73,25 @@ class StudentSerializer(serializers.ModelSerializer):
 
     username = serializers.SerializerMethodField()
     group_name = serializers.SerializerMethodField()
+    # Obrigatória na criação: exatamente 6 dígitos e única na turma.
+    matricula = serializers.CharField(
+        max_length=6,
+        error_messages={"blank": "Informe a matrícula."},
+        validators=[
+            MATRICULA_VALIDADOR,
+            UniqueValidator(
+                queryset=Student.objects.all(),
+                message="Já existe um aluno com esta matrícula.",
+            ),
+        ],
+    )
 
     class Meta:
         model = Student
         fields = [
             'id',
             'name',
+            'matricula',
             'user',
             'username',
             'group',
@@ -96,11 +116,26 @@ class StudentSerializer(serializers.ModelSerializer):
         return student
 
 
-class StudentBulkSerializer(serializers.Serializer):
-    """Entrada da criação em lote: só nomes (e, opcionalmente, o grupo)."""
+class BulkStudentItemSerializer(serializers.Serializer):
+    """Um aluno da criação em lote: nome + matrícula obrigatória (6 dígitos)."""
 
-    names = serializers.ListField(
-        child=serializers.CharField(max_length=100),
+    name = serializers.CharField(max_length=100)
+    matricula = serializers.CharField(
+        max_length=6,
+        error_messages={"blank": "Informe a matrícula."},
+        validators=[MATRICULA_VALIDADOR],
+    )
+
+
+class StudentBulkSerializer(serializers.Serializer):
+    """Entrada da criação em lote: cada aluno com nome E matrícula.
+
+    Corpo: ``{"students": [{"name": "...", "matricula": "123456"}, ...],
+    "group": <id opcional>}``.
+    """
+
+    students = serializers.ListField(
+        child=BulkStudentItemSerializer(),
         allow_empty=False,
         max_length=500,
     )
@@ -110,8 +145,28 @@ class StudentBulkSerializer(serializers.Serializer):
         allow_null=True,
     )
 
-    def validate_names(self, value):
-        cleaned = [n.strip() for n in value if n.strip()]
-        if not cleaned:
-            raise serializers.ValidationError('Informe ao menos um nome.')
-        return cleaned
+    def validate_students(self, value):
+        itens = []
+        vistos = set()
+        for item in value:
+            name = item["name"].strip()
+            matricula = item["matricula"].strip()
+            if not name:
+                raise serializers.ValidationError('Informe ao menos um nome.')
+            if matricula in vistos:
+                raise serializers.ValidationError(
+                    f'Matrícula {matricula} repetida no lote.'
+                )
+            vistos.add(matricula)
+            itens.append({"name": name, "matricula": matricula})
+
+        # Matrícula já existente no banco (a unicidade também está no model).
+        ja_cadastradas = set(
+            Student.objects.filter(matricula__in=vistos)
+            .values_list("matricula", flat=True)
+        )
+        if ja_cadastradas:
+            raise serializers.ValidationError(
+                'Matrícula já cadastrada: ' + ', '.join(sorted(ja_cadastradas)) + '.'
+            )
+        return itens

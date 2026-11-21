@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Boss, BossSpell, Choice, Question
+from .models import Boss, BossAbility, BossSpell, Choice, Question
 
 
 @admin.register(Boss)
@@ -9,6 +9,13 @@ class BossAdmin(admin.ModelAdmin):
     search_fields = ("name",)
     # Sem filter_horizontal: Boss.spells tem through (BossSpell) — pesos são
     # editados em BossSpellAdmin.
+
+
+@admin.register(BossAbility)
+class BossAbilityAdmin(admin.ModelAdmin):
+    list_display = ("boss", "name", "trigger", "effect", "value")
+    list_filter = ("boss", "trigger", "effect")
+    search_fields = ("name",)
 
 
 @admin.register(BossSpell)

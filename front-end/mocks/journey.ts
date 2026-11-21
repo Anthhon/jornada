@@ -1,4 +1,4 @@
-import type { Boss } from "@/features/bosses";
+import type { Boss, BossSkill } from "@/features/bosses";
 import type { Hero } from "@/features/heroes";
 import type { Incursion } from "@/features/missions";
 import type { Question } from "@/features/questions";
@@ -68,47 +68,76 @@ export const seedHeroes: Hero[] = [
   { id: "h6", name: "Kovu", heroClass: "Ladino", role: "Ataque", description: "O especialista em explorar falhas e golpear pontos fracos. Depende do desempenho em critérios específicos.", passive: review, passiveReview: true, attributes: { forca: 3, sabedoria: 3, carisma: 3 }, skillIds: ["k16", "k17", "k18"] },
 ];
 
+/** Habilidade com os padrões do seed do back (`seed_chefes`, ADR-017). */
+function skill(
+  spec: Pick<BossSkill, "name" | "trigger" | "effect" | "value" | "description"> &
+    Partial<Pick<BossSkill, "every" | "threshold" | "mode" | "scope" | "min_count">>,
+): BossSkill {
+  return { every: 1, threshold: 3, mode: "ANY", scope: "TEAM", min_count: 1, ...spec };
+}
+
 export const seedBosses: Boss[] = [
   {
-    id: "b1", name: "Mothman, o Sábio", hp: 150, specialty: "Penalidades por tempo e conceito", description: "Uma criatura de olhos brilhantes que guarda o covil do monólito.", active: true, skills: [
-      { name: "Olhar Hipnótico", trigger: "Tempo", effect: "Se a equipe não atingir nota máxima em Tempo, a Aliança perde 10 pontos de Dano Base." },
-      { name: "Asas de Sombras", trigger: "Conceito", effect: "Se mais de uma equipe tirar Satisfatório ou Insatisfatório em Características ou Paradigma, o dano extra (d10) dela é cortado pela metade." },
-      { name: "Enxame Noturno", trigger: "Perguntas", effect: "Para cada duas perguntas erradas, a Aliança perde 10 pontos de Dano Base." },
+    id: "b1", name: "Mothman, o Sábio", hp: 150, specialty: "Penalidades por tempo e conceito",
+    description: "Enfraquece o dano da Aliança diante de falhas em tempo, conceitos e perguntas.",
+    active: true, image: "/personagens/mothman.jpg", skills: [
+      skill({ name: "Olhar Hipnótico", trigger: "TEMPO", effect: "PENALTY", value: 10, description: "Se a equipe não atingir a nota máxima em Tempo, a Aliança perde 10 pontos de Dano Base." }),
+      skill({ name: "Asas de Sombras", trigger: "CONCEITO", effect: "CUT", value: 50, threshold: 2, scope: "ALLIANCE", min_count: 2, description: "Se mais de uma equipe tirar Parcial ou Ausente em Paradigma ou Características, o dano extra dela é cortado pela metade." }),
+      skill({ name: "Enxame Noturno", trigger: "PERGUNTAS", effect: "PENALTY", value: 10, every: 2, description: "A cada duas perguntas erradas, a Aliança perde 10 pontos de Dano Base." }),
     ]
   },
   {
-    id: "b2", name: "O Rei Rato", hp: 150, specialty: "Drena dano com cada erro", description: "Comanda um exército de companheiros que drenam a vitalidade do grupo.", active: true, skills: [
-      { name: "Olhar Hipnótico", trigger: "Tempo", effect: "Se a equipe não atingir nota máxima em Tempo, a Aliança perde 10 pontos de Dano Base." },
-      { name: "Asas de Sombras", trigger: "Conceito", effect: "Se ao menos uma equipe tirar Satisfatório ou Insatisfatório em Características ou Paradigma, o dano extra (d10) dela é cortado pela metade." },
-      { name: "Enxame Noturno", trigger: "Perguntas", effect: "Para cada pergunta errada, a Aliança perde 7 pontos de Dano Base." },
+    id: "b2", name: "Rei Rato", hp: 150, specialty: "Pune tempo, conceitos e cada erro",
+    description: "Penaliza falhas de tempo, conceitos e respostas durante a apresentação e a arguição.",
+    active: true, image: "/personagens/rei-rato.jpg", skills: [
+      skill({ name: "Olhar Hipnótico", trigger: "TEMPO", effect: "PENALTY", value: 10, description: "Se a equipe não atingir a nota máxima em Tempo, a Aliança perde 10 pontos de Dano Base." }),
+      skill({ name: "Asas de Sombras", trigger: "CONCEITO", effect: "CUT", value: 50, threshold: 2, scope: "ALLIANCE", min_count: 1, description: "Se ao menos uma equipe tirar Parcial ou Ausente em Paradigma ou Características, o dano extra dela é cortado pela metade." }),
+      skill({ name: "Enxame Noturno", trigger: "PERGUNTAS", effect: "PENALTY", value: 7, description: "A cada pergunta errada, a Aliança perde 7 pontos de Dano Base." }),
     ]
   },
   {
-    id: "b3", name: "A Sombra Espreitadora", hp: 130, specialty: "Rouba HP e pune fundamentos fracos", description: "Rouba a força de quem não domina os fundamentos básicos.", active: true, skills: [
-      { name: "Dreno de Vitalidade", trigger: "Conceito", effect: "Se a equipe tirar menos que Muito Satisfatório em Histórico ou Paradigma, a Sombra ganha +5 de HP." },
-      { name: "Emboscada nas Sombras", trigger: "Demonstração", effect: "Sem nota máxima em Principais Usos ou no código, qualquer d10 extra da Aliança é cortado pela metade." },
-      { name: "Ataque do Saqueador", trigger: "Perguntas", effect: "Para cada pergunta errada, drena 5 de Dano Base e soma esse valor ao próprio HP." },
+    id: "b3", name: "Leshy", hp: 130, specialty: "Recupera PV com fundamentos fracos",
+    description: "Recupera vida com falhas em fundamentos e perguntas erradas; confunde quem erra a demonstração.",
+    active: true, image: "/personagens/leshy.jpg", skills: [
+      skill({ name: "Raízes do Passado", trigger: "FUNDAMENTOS", effect: "HEAL", value: 5, description: "Se a equipe tirar menos que a nota máxima em Histórico ou Paradigma, Leshy ganha imediatamente +5 PV." }),
+      skill({ name: "Esporos Confusos", trigger: "DEMONSTRACAO", effect: "DISADV", value: 50, description: "Sem a nota máxima em Principais Usos ou código, o dano extra dessa equipe é reduzido em 50% (desvantagem)." }),
+      skill({ name: "Fungo do Dreno", trigger: "PERGUNTAS", effect: "HEAL", value: 5, description: "A cada pergunta errada na Fase 2, Leshy recupera 5 PV." }),
     ]
   },
   {
-    id: "b4", name: "O Colecionador de Ossos", hp: 130, specialty: "Punições amplas pela média da rubrica", description: "Um dragão ancestral que guarda os ossos dos aventureiros caídos.", active: true, skills: [
-      { name: "Sopro de Ácido", trigger: "Geral", effect: "Se a média dos critérios ficar abaixo de Satisfatório, reduz o Dano Base em 5 pontos." },
-      { name: "Rajada de Vento", trigger: "Tempo", effect: "Sem nota máxima em Tempo, os d10 extras da equipe são rolados com desvantagem." },
-      { name: "Rugido do Medo", trigger: "Perguntas", effect: "Para cada pergunta errada, a Aliança perde 10 pontos de Dano Base." },
+    id: "b4", name: "A Sombra Espreitadora", hp: 130, specialty: "Drena dano e rouba PV",
+    description: "Drena dano da Aliança, ganha vida com falhas e enfraquece os dados extras de quem erra a demonstração.",
+    active: true, image: "/personagens/sombra-espreitadora.jpg", skills: [
+      skill({ name: "Dreno de Vitalidade", trigger: "FUNDAMENTOS", effect: "HEAL", value: 5, description: "Se a equipe tirar menos que a nota máxima em Histórico ou Paradigma, a Sombra recupera +5 PV." }),
+      skill({ name: "Emboscada nas Sombras", trigger: "DEMONSTRACAO", effect: "CUT", value: 50, description: "Sem a nota máxima em Principais Usos ou código, o dano extra dessa equipe é cortado pela metade." }),
+      skill({ name: "Ataque do Saqueador", trigger: "PERGUNTAS", effect: "DRAIN", value: 5, description: "A cada pergunta errada, drena 5 de Dano Base da Aliança e soma ao próprio HP." }),
     ]
   },
   {
-    id: "b5", name: "O Colecionador de Faces", hp: 130, specialty: "Confunde equipes e encarece o suporte", description: "Usa suas muitas faces para confundir os aventureiros.", active: true, skills: [
-      { name: "Máscara da Confusão", trigger: "Geral", effect: "Com notas muito variadas na Aliança, reduz o Dano Base em 5 pontos." },
-      { name: "Máscara da Discórdia", trigger: "Suporte", effect: "Habilidades de suporte usadas na equipe marcada custam 2 PR a mais." },
-      { name: "Máscara do Silêncio", trigger: "Perguntas", effect: "Para cada pergunta errada, a Aliança perde 5 de Dano Base." },
+    id: "b5", name: "O Colecionador de Ossos", hp: 130, specialty: "Punições amplas pela média da rubrica",
+    description: "Reduz o Dano Base da Aliança com notas baixas e impõe desvantagem no Tempo; pune cada erro.",
+    active: true, image: "/personagens/colecionador-de-ossos.jpg", skills: [
+      skill({ name: "Sopro de Ácido", trigger: "GERAL", effect: "PENALTY", value: 5, mode: "AVERAGE", threshold: 1, description: "Se a média dos critérios ficar abaixo de Satisfatório, a Aliança perde 5 pontos de Dano Base." }),
+      skill({ name: "Rajada de Vento", trigger: "TEMPO", effect: "DISADV", value: 50, description: "Se a equipe não atingir a nota máxima em Tempo, seus dados extras de dano são reduzidos em 50% (desvantagem)." }),
+      skill({ name: "Rugido do Medo", trigger: "PERGUNTAS", effect: "PENALTY", value: 10, description: "A cada pergunta errada, a Aliança perde 10 pontos de Dano Base." }),
     ]
   },
   {
-    id: "b6", name: "O Mago Corrompido", hp: 200, specialty: "O chefão: castiga todas as equipes de uma vez", description: "Surge quando os heróis repetem a mesma classe quatro vezes seguidas.", active: false, skills: [
-      { name: "Distorção Temporal", trigger: "Tempo", effect: "Se a média de Tempo ficar abaixo de Muito Satisfatório, todas as equipes rerolam d10 extras e ficam com o menor." },
-      { name: "Cegueira das Sombras", trigger: "Conceito", effect: "Sem nota máxima em Características Principais, todos os d10 extras rolam com desvantagem." },
-      { name: "Aniquilação da Alma", trigger: "Perguntas", effect: "Para cada pergunta errada, drena 5 de Dano Base e sela uma equipe que acertou menos de 4 perguntas." },
+    id: "b6", name: "O Colecionador de Faces", hp: 130, specialty: "Confunde equipes e encarece o suporte",
+    description: "Castiga notas variadas e cada pergunta errada; encarece o suporte da Aliança.",
+    active: true, image: "/personagens/colecionador-de-faces.jpg", skills: [
+      skill({ name: "Máscara da Confusão", trigger: "GERAL", effect: "PENALTY", value: 5, mode: "SPREAD", threshold: 2, description: "Com notas muito variadas (2 níveis ou mais de diferença), a Aliança perde 5 pontos de Dano Base." }),
+      skill({ name: "Máscara da Discórdia", trigger: "SUPORTE", effect: "PR_COST", value: 2, description: "Habilidades de suporte custam 2 PR a mais (informativo: a raid ainda não usa o sistema de PR)." }),
+      skill({ name: "Máscara do Silêncio", trigger: "PERGUNTAS", effect: "PENALTY", value: 5, description: "A cada pergunta errada, a Aliança perde 5 pontos de Dano Base." }),
+    ]
+  },
+  {
+    id: "b7", name: "O Mago Corrompido", hp: 200, specialty: "O chefão: castiga todas as equipes de uma vez",
+    description: "Boss especial: surge quando os heróis repetem a mesma classe 4 vezes seguidas. Distorce os dados de dano e pune erros.",
+    active: false, image: "/personagens/mago-corrompido.jpg", skills: [
+      skill({ name: "Distorção Temporal", trigger: "TEMPO", effect: "DISADV", value: 50, scope: "ALLIANCE", min_count: 1, description: "Se a média de Tempo das equipes ficar abaixo da nota máxima, todas afetadas sofrem desvantagem no dano extra." }),
+      skill({ name: "Cegueira das Sombras", trigger: "CONCEITO", effect: "DISADV", value: 50, description: "Sem a nota máxima em Paradigma ou Características, o dano extra da equipe é reduzido em 50%." }),
+      skill({ name: "Aniquilação da Alma", trigger: "PERGUNTAS", effect: "DRAIN", value: 5, description: "A cada pergunta errada, drena 5 de Dano Base e soma ao próprio HP." }),
     ]
   },
 ];

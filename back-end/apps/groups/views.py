@@ -8,12 +8,13 @@ from rest_framework.response import Response
 
 from apps.users.models import Student
 
-from .models import Group
+from .models import Group, TeamAbilityTemplate
 from .serializers import (
     ExtraPointsSerializer,
     GroupSerializer,
     LeaderboardSerializer,
     SetMembersSerializer,
+    TeamAbilityTemplateSerializer,
 )
 
 
@@ -67,6 +68,21 @@ class GroupViewSet(viewsets.ModelViewSet):
         data.is_valid(raise_exception=True)
         group.add_extra_points(data.validated_data["amount"])
         return Response(self.get_serializer(group).data)
+
+
+class TeamAbilityTemplateViewSet(viewsets.ReadOnlyModelViewSet):
+    """Catálogo de habilidades de equipe (leitura) — o professor escolhe 3+1.
+
+    Filtro opcional ``?theme=`` (a temática/tribo do ano, ADR-021).
+    """
+
+    queryset = TeamAbilityTemplate.objects.all()
+    serializer_class = TeamAbilityTemplateSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        theme = self.request.query_params.get("theme")
+        return qs.filter(theme=theme) if theme else qs
 
 
 class LeaderboardView(generics.ListAPIView):

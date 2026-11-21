@@ -16,6 +16,7 @@ import {
   Shield,
   Skull,
   Swords,
+  Trophy,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -31,6 +32,7 @@ const navigation = [
   { href: "/dashboard", label: "Salão da Guilda", icon: Castle },
   { href: "/missions", label: "Incursões", icon: Swords },
   { href: "/agenda-incursoes", label: "Agenda de incursões", icon: CalendarDays },
+  { href: "/arena", label: "Arena", icon: Trophy },
   { href: "/students", label: "Aventureiros", icon: Users },
   { href: "/groups", label: "Grupos", icon: Shield },
   { href: "/heroes", label: "Heróis", icon: Flame },

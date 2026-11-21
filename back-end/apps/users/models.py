@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 
 class Profile(models.Model):
@@ -27,6 +27,19 @@ class Student(models.Model):
     name = models.CharField(
             max_length=100,
             verbose_name="Nome do estudante",
+            )
+    # Matrícula do aluno: exatamente 6 dígitos, obrigatória e única
+    # (identificador do aluno no caderno da turma).
+    matricula = models.CharField(
+            max_length=6,
+            verbose_name="Matrícula",
+            validators=[
+                RegexValidator(
+                    regex=r"^[0-9]{6}$",
+                    message="A matrícula deve ter exatamente 6 dígitos.",
+                    ),
+                ],
+            unique=True,
             )
     # Should be linked manually by an admin, a User only counts
     # as a student once a Student row points at it.

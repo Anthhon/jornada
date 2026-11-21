@@ -167,8 +167,13 @@ class StartBattleTests(BattleBase):
 
 class StartPermissionTests(BattleBase):
     def _client_aluno(self, grupo, username, active=True):
+        from apps.test_helpers import next_matricula
+
         user = User.objects.create_user(username=username, password="x")
-        Student.objects.create(name=username, user=user, group=grupo, is_active=active)
+        Student.objects.create(
+            name=username, user=user, group=grupo, is_active=active,
+            matricula=next_matricula(),
+        )
         client = APIClient()
         client.force_authenticate(user=user)
         return client
@@ -305,7 +310,9 @@ class AnswerTests(BattleBase):
         self.assertEqual(resp.status_code, 400)
 
     def test_estudante_de_outro_grupo_rejeitado(self):
-        intruso = Student.objects.create(name="Intruso", group=self.outro_grupo)
+        intruso = Student.objects.create(
+            name="Intruso", group=self.outro_grupo, matricula="900031"
+        )
         q = self.current_question()
         resp = self.answer(self.progress_id, right(q.id), student=intruso.id)
         self.assertEqual(resp.status_code, 400)
@@ -415,8 +422,8 @@ class OutcomeTests(BattleBase):
         self.assertEqual(self.start().status_code, 400)
 
     def test_resumo_conta_acertos_por_aluno(self):
-        ana = Student.objects.create(name="Ana", group=self.grupo)
-        bia = Student.objects.create(name="Bia", group=self.grupo)
+        ana = Student.objects.create(name="Ana", group=self.grupo, matricula="900032")
+        bia = Student.objects.create(name="Bia", group=self.grupo, matricula="900033")
         pid = self.start().data["id"]
         q = StageProgress.objects.get(pk=pid).current_question
         self.answer(pid, right(q.id), student=ana.id)

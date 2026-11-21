@@ -1,5 +1,5 @@
 import axios, { type InternalAxiosRequestConfig } from "axios";
-import { API_BASE_URL } from "./api-config";
+import { API_BASE_URL, MSW_ACTIVE } from "./api-config";
 import { tokenStorage, type TokenStorage } from "./token-storage";
 
 interface RetryConfig extends InternalAxiosRequestConfig { _retried?: boolean }
@@ -12,7 +12,7 @@ export function createApiClient(storage: TokenStorage = tokenStorage, onUnauthor
   const authClient = axios.create({ baseURL: API_BASE_URL, timeout: 15000 });
   let refreshRequest: Promise<string> | null = null;
   async function prepareMocks() {
-    if (typeof window !== "undefined" && process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_API_MOCKING === "enabled") {
+    if (typeof window !== "undefined" && MSW_ACTIVE) {
       const { enableMocking } = await import("@/mocks/browser");
       await enableMocking();
     }

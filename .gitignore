@@ -256,7 +256,15 @@ media/
 *.db
 *.pid
 
+# Migrations não são versionadas: cada dev/CI gera as suas
+# (decisão registrada no commit 303823c — "não versionar migrations").
+**/migrations/
 
 # Front-end source directories are not Python build artifacts.
 !front-end/lib/
 !front-end/lib/**
+!front-end/features/**/lib/
+!front-end/features/**/lib/**
+
+# Capturas de tela locais (material de apresentação/demonstração)
+/telas/
