@@ -280,4 +280,22 @@ def apply_performance(round_obj, group_id=None, performance=None, criteria=None)
 
 
 def adjust_points(round_obj, group_id, amount):
-    return _run(round_obj, lambda st: engine.adjust_points(st, group_id, amount))
+    """Ajuste manual do professor nos pontos de uma equipe (ADR-011).
+
+    Em ``CONFIG`` a equipe ativa é registrada em bloco: o placar da
+    rodada pode ser lançado **antes** de a batalha começar (tela de
+    Configuração da Rodada, M-49). Fora do CONFIG, só quem já está
+    na batalha pode ser ajustado.
+    """
+    def mutate(state):
+        if group_id not in state.teams:
+            ativo = Group.objects.filter(
+                id=group_id, is_active=True
+            ).exists()
+            if round_obj.status != ArenaRound.Status.CONFIG or not ativo:
+                raise engine.ArenaError(
+                    "Equipe não registrada nesta batalha."
+                )
+            engine.register_team(state, group_id)
+        return engine.adjust_points(state, group_id, amount)
+    return _run(round_obj, mutate)

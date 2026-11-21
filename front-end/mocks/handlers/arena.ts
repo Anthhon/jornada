@@ -95,6 +95,9 @@ interface MockRound {
   reward_factor: number;
   balance_ref_teams: number;
   treasure: number;
+  /** Datas da tela de configuração (M-49); `null` = não definida. */
+  date: string | null;
+  deadline: string | null;
   outcome: "" | "VICTORY" | "RETREAT";
   killing_team: number | null;
   boss: MockBoss;
@@ -249,6 +252,8 @@ function seed(): MockArena {
         reward_factor: 1,
         balance_ref_teams: 4,
         treasure: 500,
+        date: null,
+        deadline: null,
         outcome: "",
         killing_team: null,
         boss: { ...boss },
@@ -356,6 +361,21 @@ function toSummary(round: MockRound) {
     level: round.level,
     max_hp: round.max_hp,
     hp: round.hp,
+    // Configuração da rodada (M-49) — o store persistido pode não ter
+    // estes campos; a chave some do JSON e o zod aceita (`nullish`).
+    date: round.date ?? null,
+    deadline: round.deadline ?? null,
+    multiplier: round.multiplier,
+    retaliation_ratio: round.retaliation_ratio,
+    reward_factor: round.reward_factor,
+    balance_ref_teams: round.balance_ref_teams,
+    treasure: round.treasure,
+    contributions: Object.values(round.teams).map((team) => ({
+      group: team.group_id,
+      group_name: team.group_name,
+      points: teamPoints(round, team),
+      manual_adjustment: team.manual_adjustment,
+    })),
   };
 }
 
@@ -733,8 +753,34 @@ function applyAction(arena: MockArena, round: MockRound, action: string, body: R
     }
     case "override": {
       const groupId = Number(body.group_id);
-      const team = round.teams[String(groupId)];
-      if (!team) return "Equipe não registrada nesta batalha.";
+      let team = round.teams[String(groupId)];
+      if (!team) {
+        // Em CONFIG a equipe ativa é registrada em bloco (M-49): o placar
+        // da rodada pode ser lançado antes de a batalha começar — igual ao
+        // `adjust_points` do back. Fora do CONFIG, só quem está na batalha.
+        const registered = SEED_TEAMS.find((item) => item.group_id === groupId);
+        if (round.status !== "CONFIG" || !registered) {
+          return "Equipe não registrada nesta batalha.";
+        }
+        team = {
+          ...registered,
+          base_damage: 0,
+          battle_damage: 0,
+          retaliation_loss: 0,
+          manual_adjustment: 0,
+          criteria: null,
+          wrong_answers: 0,
+          damage_factor: 1,
+          shield: 0,
+          damage_buff: 0,
+          abilities: TEAM_TEMPLATES.map((template) => ({
+            ...template,
+            id: template.template_id,
+            charges_left: 0,
+          })),
+        };
+        round.teams[String(groupId)] = team;
+      }
       const amount = Math.trunc(Number(body.amount) || 0);
       if (!amount) return null;
       team.manual_adjustment += amount;
@@ -873,11 +919,83 @@ export const arenaHandlers = [
     }
   }),
 
+  // Grupos para a tabela de placares (GET /groups/, leitura pública, M-49).
+  http.get(`${API_BASE_URL}/groups/`, () => {
+    const totals: Record<number, number> = { 1: 1280, 2: 980, 3: 1050 };
+    return HttpResponse.json(
+      SEED_TEAMS.map((team) => ({
+        id: team.group_id,
+        name: team.group_name,
+        points: totals[team.group_id] ?? 0,
+        extra_points: 0,
+        total_points: totals[team.group_id] ?? 0,
+        member_count: 3,
+        is_active: true,
+        created_at: "2026-01-05T00:00:00Z",
+      })),
+    );
+  }),
+
   http.get(`${API_BASE_URL}/arena/rounds/`, () => {
     try {
       return HttpResponse.json(read().rounds.map(toSummary));
     } catch {
       return error("Não foi possível carregar as rodadas.", 500);
+    }
+  }),
+
+  // PATCH da tela de configuração (M-49): datas em qualquer status;
+  // parâmetros inteiros espelham `PositiveIntegerField` do modelo. A UI
+  // trava os parâmetros fora de CONFIG — aqui o espelho é a API, que é
+  // permissiva (quem escreve é o professor).
+  http.patch(`${API_BASE_URL}/arena/rounds/:id/`, async ({ request, params }) => {
+    if (!isMockTeacher(request)) return error("Acesso não autorizado.", 403);
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return error("JSON inválido.");
+    }
+    try {
+      const arena = read();
+      const round = arena.rounds.find((item) => item.id === Number(params.id));
+      if (!round) return error("Rodada não encontrada.", 404);
+
+      for (const key of ["date", "deadline"] as const) {
+        if (!(key in body)) continue;
+        const value = body[key];
+        if (value != null && (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))) {
+          return error("Data inválida (use AAAA-MM-DD).");
+        }
+        round[key] = (value as string | null) ?? null;
+      }
+
+      const positiveInts = {
+        level: "Nível",
+        max_hp: "PV máximo",
+        treasure: "Saque do chefe",
+        balance_ref_teams: "Escala do bando",
+      } as const;
+      for (const key of Object.keys(positiveInts) as (keyof typeof positiveInts)[]) {
+        if (!(key in body)) continue;
+        const value = Number(body[key]);
+        if (!Number.isInteger(value) || value < 0) {
+          return error(`${positiveInts[key]} precisa ser um inteiro ≥ 0.`);
+        }
+        round[key] = value;
+      }
+
+      for (const key of ["multiplier", "retaliation_ratio", "reward_factor"] as const) {
+        if (!(key in body)) continue;
+        const value = Number(body[key]);
+        if (!Number.isFinite(value)) return error("Valor numérico inválido.");
+        round[key] = value;
+      }
+
+      write(arena);
+      return HttpResponse.json(toSummary(round));
+    } catch {
+      return error("Não foi possível salvar a configuração.", 500);
     }
   }),
 
@@ -932,6 +1050,8 @@ export const arenaHandlers = [
         reward_factor: Number(body.reward_factor ?? 1),
         balance_ref_teams: Number(body.balance_ref_teams ?? 4),
         treasure: Math.max(0, Math.trunc(Number(body.treasure) || 0)),
+        date: null,
+        deadline: null,
         outcome: "",
         killing_team: null,
         boss: { ...boss },

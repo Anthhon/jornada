@@ -1,9 +1,11 @@
 import { api } from "@/lib/api";
 import {
   arenaBossOptionSchema,
+  arenaGroupOptionSchema,
   arenaRoundSchema,
   arenaStateSchema,
   teamAbilityTemplateSchema,
+  type ArenaGroupOption,
   type ArenaRound,
   type ArenaState,
   type TeamAbilityTemplate,
@@ -42,6 +44,26 @@ export async function assignAbilities(
   await api.patch(`/groups/${groupId}/`, { abilities: templateIds });
 }
 
+/**
+ * Edita a configuração da rodada (`PATCH /arena/rounds/{id}/`, M-49):
+ * datas em qualquer status; parâmetros da fórmula só em CONFIG (a tela
+ * trava a UI — a API aceita, quem escreve é o professor).
+ */
+export async function updateRound(
+  id: number,
+  payload: Record<string, string | number | null>,
+): Promise<void> {
+  await api.patch(`${base}/${id}/`, payload);
+}
+
+/** Grupos da tabela de placares (`GET /groups/`, leitura pública, M-49). */
+export async function listGroups(
+  signal?: AbortSignal,
+): Promise<ArenaGroupOption[]> {
+  const { data } = await api.get("/groups/", { signal });
+  return arenaGroupOptionSchema.array().parse(data);
+}
+
 export async function createRound(payload: {
   name: string;
   boss: number;
@@ -72,6 +94,8 @@ export const arenaService = {
   listBosses,
   listTeamAbilities,
   assignAbilities,
+  listGroups,
+  updateRound,
   create: createRound,
   start: (id: number) => post(id, "start"),
   pause: (id: number) => post(id, "pause"),

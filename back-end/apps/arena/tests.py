@@ -5,7 +5,7 @@ from apps.bosses.models import Boss, BossAbility
 from apps.groups.models import Group
 from apps.test_helpers import anon_client, staff_client, user_client
 
-from . import engine
+from . import engine, services
 from .models import ArenaRound
 
 
@@ -945,3 +945,80 @@ class ArenaTeamAbilityApiTests(TestCase):
         self._use("Escudo")  # roll 17 -> escudo 60
         state = self._state()
         self.assertEqual(state.data["teams"][0]["shield"], 60)
+
+
+class ArenaConfigOverrideTests(TestCase):
+    """Placar editável na tela de configuração (M-49).
+
+    Em ``CONFIG`` o ``override`` registra a equipe ativa em bloco: o
+    professor lança o placar da rodada antes de a batalha começar.
+    """
+
+    def setUp(self):
+        self.boss = Boss.objects.create(name="Vigia", max_hp=15000)
+        self.group = Group.objects.create(name="Equipe Alfa")
+
+    def _round(self):
+        resp = staff_client().post(
+            "/api/arena/rounds/",
+            {"name": "Rodada Cfg", "boss": self.boss.id,
+             "balance_ref_teams": 0},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        return resp.data["id"]
+
+    def _override(self, rid, group_id, amount, client=None):
+        return (client or staff_client()).post(
+            f"/api/arena/rounds/{rid}/override/",
+            {"group_id": group_id, "amount": amount},
+            format="json",
+        )
+
+    def test_placar_em_config_registra_equipe_e_sobrevive_ao_start(self):
+        rid = self._round()
+        resp = self._override(rid, self.group.id, 420)
+        self.assertEqual(resp.status_code, 200)
+
+        round_obj = ArenaRound.objects.get(id=rid)
+        contrib = round_obj.contributions.get(group_id=self.group.id)
+        self.assertEqual(contrib.manual_adjustment, 420)
+
+        # A equipe já existe no estado, com o placar, sem batalha alguma.
+        state = services.build_state(round_obj)
+        self.assertIn(self.group.id, state.teams)
+        self.assertEqual(state.teams[self.group.id].points(state.config), 420)
+
+        # O start é idempotente sobre o registro e mantém o ajuste.
+        resp = staff_client().post(
+            f"/api/arena/rounds/{rid}/start/", format="json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        state = services.build_state(ArenaRound.objects.get(id=rid))
+        self.assertEqual(state.teams[self.group.id].manual_adjustment, 420)
+
+    def test_placar_em_config_equipe_inativa_erro(self):
+        inativa = Group.objects.create(name="Equipe Inativa", is_active=False)
+        rid = self._round()
+        resp = self._override(rid, inativa.id, 100)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn(
+            "Equipe não registrada nesta batalha.", str(resp.data)
+        )
+        self.assertFalse(
+            ArenaRound.objects.get(id=rid).contributions.exists()
+        )
+
+    def test_ajuste_fora_de_config_sem_registro_erro(self):
+        rid = self._round()
+        resp = staff_client().post(
+            f"/api/arena/rounds/{rid}/start/", format="json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        # Equipe criada depois do start: fora do registro da batalha.
+        tarde = Group.objects.create(name="Equipe Tardia")
+        resp = self._override(rid, tarde.id, 50)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn(
+            "Equipe não registrada nesta batalha.", str(resp.data)
+        )

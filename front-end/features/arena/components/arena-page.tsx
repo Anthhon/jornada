@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -11,7 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { EmptyState, PageHeader, PageState } from "@/features/journey/components/ui";
-import { Plus } from "@/components/icons/rpg-icons";
+import { Plus, Scroll } from "@/components/icons/rpg-icons";
 import { cn } from "@/lib/utils";
 import { useArenaState } from "../hooks/use-arena-state";
 import { arenaService } from "../services/arena-service";
@@ -193,9 +194,16 @@ function Arena() {
         title="Arena"
         description="Batalha de chefe coletiva: todas as equipes contra um chefe da rodada."
         action={
-          <Button onClick={() => setCreating(true)}>
-            <Plus /> Nova rodada
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" asChild>
+              <Link href="/arena/configuracao">
+                <Scroll /> Configurar rodada
+              </Link>
+            </Button>
+            <Button onClick={() => setCreating(true)}>
+              <Plus /> Nova rodada
+            </Button>
+          </div>
         }
       />
 

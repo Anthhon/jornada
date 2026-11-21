@@ -130,6 +130,14 @@ export const arenaStateSchema = z.object({
 });
 
 /** Entrada do `GET /arena/rounds/` (lista de rodadas). */
+export const arenaRoundContributionSchema = z.object({
+  group: z.number(),
+  group_name: z.string(),
+  /** Pontos da equipe na rodada (ajuste manual incluso). */
+  points: z.number(),
+  manual_adjustment: z.number().optional(),
+});
+
 export const arenaRoundSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -138,6 +146,27 @@ export const arenaRoundSchema = z.object({
   level: z.number(),
   max_hp: z.number(),
   hp: z.number(),
+  // Campos de configuração da rodada (tela M-49). Opcionais porque o
+  // espelho MSW guarda rodadas antigas sem eles (store persistido).
+  date: z.string().nullish(),
+  deadline: z.string().nullish(),
+  multiplier: z.number().optional(),
+  retaliation_ratio: z.number().optional(),
+  reward_factor: z.number().optional(),
+  balance_ref_teams: z.number().optional(),
+  treasure: z.number().optional(),
+  contributions: z.array(arenaRoundContributionSchema).optional(),
+});
+
+/** Grupos exibidos na tabela de placares (`GET /groups/`, leitura pública). */
+export const arenaGroupOptionSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  points: z.number().optional(),
+  extra_points: z.number().optional(),
+  total_points: z.number(),
+  member_count: z.number(),
+  is_active: z.boolean(),
 });
 
 /** Resumo de chefe p/ o seletor de "nova rodada" (`GET /bosses/`). */
@@ -154,4 +183,6 @@ export type ArenaAbility = z.infer<typeof arenaAbilitySchema>;
 export type ArenaBoss = z.infer<typeof arenaBossSchema>;
 export type ArenaState = z.infer<typeof arenaStateSchema>;
 export type ArenaRound = z.infer<typeof arenaRoundSchema>;
+export type ArenaRoundContribution = z.infer<typeof arenaRoundContributionSchema>;
+export type ArenaGroupOption = z.infer<typeof arenaGroupOptionSchema>;
 export type ArenaBossOption = z.infer<typeof arenaBossOptionSchema>;
